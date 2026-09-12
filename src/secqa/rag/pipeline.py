@@ -368,7 +368,10 @@ def _single_shot(
         )
     )
 
-    cost = prices.cost_usd(response.provider, response.model, response.usage)
+    # Price on the *configured* id (the one the price table and every pre-flight check validate).
+    # ``response.model`` is the vendor's echo and may be a dated snapshot ("gpt-5.5-2026-06-01")
+    # that is not a key in models.yaml; it is kept on the Answer and trace for provenance only.
+    cost = prices.cost_usd(provider.provider, provider.model, response.usage)
     answer = Answer(
         request_id=rid,
         question=question,

@@ -9,6 +9,7 @@ citations, priced usage).
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -23,6 +24,7 @@ from secqa.core.contracts import (
 from secqa.core.errors import ProviderError
 from secqa.grounding import CitationVerifier
 from secqa.providers.mock_provider import MockProvider
+from secqa.providers.openai_provider import openai_to_response
 from secqa.providers.pricing import PriceTable
 from secqa.providers.scripted_provider import ScriptedProvider
 from secqa.rag import (
@@ -214,6 +216,56 @@ def test_mock_provider_costs_nothing(pipeline: RagPipeline) -> None:
     assert answer.cost_usd == 0.0
     assert answer.usage.input_tokens > 0 and answer.usage.output_tokens > 0
     assert answer.provider == "mock" and answer.model == "mock-extractive"
+
+
+OPENAI_JSON_FIXTURE = (
+    Path(__file__).resolve().parents[1]
+    / "fixtures"
+    / "providers_responses"
+    / "openai_text_json.json"
+)
+
+
+class SnapshotEchoOpenAI(FixedProvider):
+    """Configured as ``openai:gpt-test`` but answers with the recorded OpenAI fixture, whose
+    ``model`` is the dated snapshot id the vendor really echoes (``gpt-5.5-2026-06-01``)."""
+
+    def complete(self, messages, **kwargs):  # type: ignore[no-untyped-def]
+        self.calls.append({"messages": messages, **kwargs})
+        raw = json.loads(OPENAI_JSON_FIXTURE.read_text(encoding="utf-8"))
+        return openai_to_response(raw, latency_ms=1.0, expect_json=True)
+
+
+def test_cost_is_priced_on_the_configured_id_not_the_vendor_echo(prices: PriceTable) -> None:
+    """Regression: OpenAI echoes a dated snapshot id that is not a key in models.yaml. The
+    pre-flight checks validate the configured id, so pricing must use it too; otherwise the
+    first real call raised ConfigError *after* it had been paid for."""
+    provider = SnapshotEchoOpenAI()  # provider="openai", model="gpt-test" (priced)
+    assert prices.has(provider.provider, provider.model)
+    assert not prices.has("openai", "gpt-5.5-2026-06-01")
+
+    answer = answer_closed_book(NET_SALES_QUESTION, provider, prices)
+
+    # Fixture usage: 800 prompt (0 cached) + 60 completion at gpt-test rates.
+    assert answer.cost_usd == pytest.approx((800 * 4.0 + 60 * 16.0) / 1e6)
+    # The vendor's id is still recorded for provenance, on the Answer and the trace.
+    assert answer.provider == "openai" and answer.model == "gpt-5.5-2026-06-01"
+    llm_steps = [step for step in answer.trace if step.kind == "llm"]
+    assert [step.name for step in llm_steps] == ["openai:gpt-5.5-2026-06-01"]
+
+
+def test_rag_pipeline_prices_on_configured_id(
+    retriever: Retriever, verifier: CitationVerifier, prices: PriceTable
+) -> None:
+    usage = Usage(input_tokens=1000, output_tokens=50)
+    provider = FixedProvider(
+        parsed={"answer": ABSTAIN_TEXT, "abstain": True, "citations": []},
+        usage=usage,
+        response_model="gpt-test-2026-06-01",  # not priced; the configured "gpt-test" is
+    )
+    answer = RagPipeline(retriever, provider, verifier, prices).answer(NET_SALES_QUESTION)
+    assert answer.cost_usd == pytest.approx((1000 * 4.0 + 50 * 16.0) / 1e6)
+    assert answer.model == "gpt-test-2026-06-01"
 
 
 def test_mock_abstain_behaviour_records_abstention(

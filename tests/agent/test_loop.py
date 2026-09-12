@@ -369,6 +369,32 @@ def test_cost_cap_aborts_before_the_next_call(make_loop: LoopFactory) -> None:
     assert answer.provider == "openai" and answer.model == "gpt-test"
 
 
+class SnapshotEchoScripted(PricedScripted):
+    """``openai:gpt-test`` whose responses echo a dated snapshot id, as real vendors do."""
+
+    def complete(self, messages, **kwargs):  # type: ignore[no-untyped-def]
+        response = super().complete(messages, **kwargs)
+        return response.model_copy(update={"model": f"{self.model}-2026-06-01"})
+
+
+def test_cost_is_priced_on_the_configured_id_not_the_vendor_echo(make_loop: LoopFactory) -> None:
+    """Regression: pricing keyed on ``response.model`` raised ConfigError for the dated
+    snapshot id OpenAI echoes (``gpt-5.5-2026-06-01``) after the call had been paid for."""
+    usage = {"input_tokens": 1_000, "output_tokens": 100}  # $0.0056 per call at gpt-test
+    provider = SnapshotEchoScripted(
+        [
+            {**search_turn("net sales"), "usage": usage},
+            {**final_turn(citations=[net_sales_citation()]), "usage": usage},
+        ]
+    )
+    answer = make_loop(provider, max_cost_usd=0.5).run(NET_SALES_QUESTION)
+    assert answer.terminated_by == "final_answer"
+    assert answer.cost_usd == pytest.approx(0.0112)
+    assert answer.provider == "openai" and answer.model == "gpt-test"
+    llm_steps = [step for step in answer.trace if step.kind == "llm"]
+    assert llm_steps and all(step.name == "openai:gpt-test-2026-06-01" for step in llm_steps)
+
+
 def test_cost_cap_lets_a_cheap_run_finish(make_loop: LoopFactory) -> None:
     usage = {"input_tokens": 1_000, "output_tokens": 100}  # $0.0056 per call
     provider = PricedScripted(

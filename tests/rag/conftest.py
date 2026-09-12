@@ -132,9 +132,13 @@ class FixedProvider(BaseProvider):
         provider: str = "openai",
         model: str = "gpt-test",
         latency_ms: float = 0.0,
+        response_model: str | None = None,
     ) -> None:
         self.provider = provider
         self.model = model
+        # What the vendor echoes back; real vendors return dated snapshot ids ("gpt-5.5-2026-06-01")
+        # that differ from the configured id, so tests can decouple the two here.
+        self._response_model = response_model if response_model is not None else model
         self._text = text
         self._parsed = parsed
         self._stop_reason: StopReason = stop_reason
@@ -167,7 +171,7 @@ class FixedProvider(BaseProvider):
             tool_calls=[],
             usage=self._usage,
             provider=self.provider,
-            model=self.model,
+            model=self._response_model,
             latency_ms=self._latency_ms,
             stop_reason=self._stop_reason,
             parsed=self._parsed,

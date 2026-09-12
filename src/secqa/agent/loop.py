@@ -295,7 +295,9 @@ class AgentLoop:
             )
             raise
         elapsed = (time.perf_counter() - llm_started) * 1000.0
-        cost = self.prices.cost_usd(response.provider, response.model, response.usage)
+        # Price on the configured id (validated by the pre-flight checks), not the vendor echo:
+        # OpenAI answers with a dated snapshot id that is not a key in models.yaml.
+        cost = self.prices.cost_usd(self.provider.provider, self.provider.model, response.usage)
         state.llm_calls += 1
         state.llm_ms += elapsed
         state.usage = state.usage + response.usage
