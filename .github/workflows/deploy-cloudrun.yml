@@ -6,6 +6,9 @@
 # tag into the project's repository first. Vendor keys reach the service only through Secret
 # Manager references (`--set-secrets`), never as plain env vars in this file.
 #
+# build.yml fires on the same tag push and needs many minutes for the `full` target, so the job
+# first waits (bounded) for ghcr.io/<owner>/sec-filing-qa:<sha> to exist instead of racing it.
+#
 # Repository variables (Settings -> Variables):
 #   DEPLOY_GCP=true                 enable this workflow
 #   GCP_PROJECT_ID                  e.g. crystal-496615
@@ -46,7 +49,7 @@ jobs:
     name: gcloud run deploy
     if: vars.DEPLOY_GCP == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     environment: gcp
     env:
       PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
@@ -74,6 +77,25 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Wait for build.yml to publish the image
+        env:
+          IMAGE_WAIT_MINUTES: "45"
+        run: |
+          set -euo pipefail
+          # build.yml runs on the same `v*` tag push and only publishes ghcr.io/<owner>/sec-filing-qa:<sha>
+          # once the slow `full` target (torch) has been built, so this job must not race it. Poll the
+          # registry with a hard deadline and fail with a clear message if the tag never appears.
+          DEADLINE=$(( $(date +%s) + 60 * IMAGE_WAIT_MINUTES ))
+          until docker manifest inspect "${SOURCE_IMAGE}" >/dev/null 2>&1; do
+            if [ "$(date +%s)" -ge "${DEADLINE}" ]; then
+              echo "::error::${SOURCE_IMAGE} was not published within ${IMAGE_WAIT_MINUTES} min. build.yml must publish this tag first: check the build run for commit ${GITHUB_SHA}, or dispatch this workflow with an image_tag that already exists on GHCR."
+              exit 1
+            fi
+            echo "$(date -u +%H:%M:%S) ${SOURCE_IMAGE} not published yet; retrying in 30 s"
+            sleep 30
+          done
+          echo "found ${SOURCE_IMAGE}"
 
       - name: Mirror the image into Artifact Registry
         id: mirror

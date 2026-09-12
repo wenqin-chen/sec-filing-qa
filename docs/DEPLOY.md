@@ -91,6 +91,12 @@ into the job summary, and asserts the mock answer carries citations. The first d
 to be done by hand from a laptop with `gcloud` (the same command is in `infra/gcp/README.md`),
 after which the workflow repeats it on every tag.
 
+A deploy needs a published `ghcr.io/<owner>/sec-filing-qa:<sha>` image. `build.yml` fires on the
+same tag push but takes many minutes for the `full` target, so both deploy workflows start by
+polling the registry (`docker manifest inspect`, every 30 s, up to 45 minutes) and fail with an
+explicit message if the tag never appears — for example when the build failed, or when a manual
+dispatch names an `image_tag` that was never built.
+
 Sizing: `--concurrency 4` because one process holds one DuckDB handle and agent runs are
 CPU-bound for seconds; `--max-instances 2` caps the bill; cold start of the `full` image is
 10–20 s from zero (`--cpu-boost` helps; `CLOUD_RUN_MIN_INSTANCES=1` removes it at the cost of one

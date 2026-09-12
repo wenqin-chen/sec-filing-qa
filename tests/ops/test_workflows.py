@@ -120,6 +120,49 @@ class TestDeploy:
         assert "GITHUB_STEP_SUMMARY" in run
         assert 'a["citations"]' in run, "smoke asserts the mock answer carries citations"
 
+    @pytest.mark.parametrize(
+        ("name", "image_env", "consumer"),
+        [
+            ("deploy-cloudrun", "SOURCE_IMAGE", "docker pull"),
+            ("deploy-azure", "IMAGE", "az deployment group create"),
+        ],
+    )
+    def test_waits_for_the_image_before_using_it(
+        self, name: str, image_env: str, consumer: str
+    ) -> None:
+        """build.yml fires on the same ``v*`` tag push and needs many minutes for the ``full``
+        target, so a deploy that references ``:<sha>`` immediately races it. Each deploy job must
+        poll the registry for the exact image it will use, before the first step that uses it,
+        with a hard deadline that leaves the job time to deploy and smoke."""
+        wf = load_workflow(name)
+        job = wf["jobs"]["deploy"]
+        image = str(job["env"][image_env])
+        assert image.startswith("ghcr.io/") and "${{ inputs.image_tag || github.sha }}" in image
+        steps = _steps(wf, "deploy")
+        runs = [str(s.get("run", "")) for s in steps]
+        scripts = [str(s.get("with", {}).get("inlineScript", "")) for s in steps]
+        wait_idx = next(
+            i for i, run in enumerate(runs) if f'docker manifest inspect "${{{image_env}}}"' in run
+        )
+        consumer_idx = next(
+            i for i, (r, s) in enumerate(zip(runs, scripts, strict=True)) if consumer in r + s
+        )
+        assert wait_idx < consumer_idx, "the wait must precede the first use of the image"
+        wait = steps[wait_idx]
+        minutes = int(wait["env"]["IMAGE_WAIT_MINUTES"])
+        assert 20 <= minutes <= 55, "long enough for the torch build, short of the job timeout"
+        assert "DEADLINE" in runs[wait_idx] and "exit 1" in runs[wait_idx], "bounded, fails loudly"
+        assert "::error::" in runs[wait_idx] and "build.yml" in runs[wait_idx]
+        assert int(job["timeout-minutes"]) >= minutes + 10, "room for the deploy + smoke"
+        logins = [
+            i
+            for i, s in enumerate(steps)
+            if str(s.get("uses", "")).startswith("docker/login-action")
+            and s["with"]["registry"] == "ghcr.io"
+        ]
+        assert logins and logins[0] < wait_idx, "GHCR login precedes the manifest check"
+        assert wf["permissions"]["packages"] == "read"
+
     def test_cloudrun_flags_match_spec(self) -> None:
         wf = load_workflow("deploy-cloudrun")
         run = _run_text(wf, "deploy")
