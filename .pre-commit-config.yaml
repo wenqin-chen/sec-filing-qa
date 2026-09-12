@@ -1,0 +1,47 @@
+# pre-commit hooks: `uv run --no-sync pre-commit install` (or `pipx install pre-commit`).
+# Same ruff version family as pyproject; gitleaks mirrors the CI job so a secret never lands in a
+# commit; the local hook blocks PDFs / DuckDB files / cassettes (never committed, SPEC section 9).
+minimum_pre_commit_version: "3.5.0"
+default_language_version:
+  python: python3.11
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-added-large-files
+        args: ["--maxkb=512"]
+      - id: check-yaml
+        exclude: ^infra/azure/  # bicep is not yaml; keep the scope obvious
+      - id: check-json
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+        args: ["--markdown-linebreak-ext=md"]
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: ["--fix"]
+      - id: ruff-format
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+        args: ["--config", ".gitleaks.toml"]
+
+  - repo: local
+    hooks:
+      - id: no-dataset-or-index-files
+        name: refuse PDFs, DuckDB files, cassettes and .env files
+        entry: >-
+          sh -c 'echo "refusing to commit dataset/index/secret files (SPEC section 9):" "$@"; exit 1' --
+        language: system
+        files: '(\.pdf|\.duckdb|\.duckdb\.wal|\.tar\.zst|^\.env|/\.env)$'
+        exclude: '^\.env\.example$'

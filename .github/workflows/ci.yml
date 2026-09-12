@@ -1,9 +1,15 @@
+# CI (SPEC section 10): lint + offline tests + mock smoke eval on every PR/push, gitleaks, and a
+# container build (no push) whose running instance must answer /healthz, /readyz and a mock
+# /v1/ask. Nothing here needs a vendor key or the network beyond package downloads.
 name: ci
 
 on:
   push:
     branches: [main]
   pull_request:
+
+permissions:
+  contents: read
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -47,7 +53,6 @@ jobs:
         run: uv run --no-sync pytest -q --cov=secqa --cov-report=xml --cov-report=term
 
       - name: Mock smoke evaluation
-        if: hashFiles('configs/rag_mock.yaml') != ''
         run: uv run --no-sync secqa eval --config configs/rag_mock.yaml --limit 6
 
       - name: Upload coverage and smoke results
@@ -60,25 +65,32 @@ jobs:
             results/**/summary.json
           if-no-files-found: ignore
 
+  gitleaks:
+    name: gitleaks (secret scan)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+          GITLEAKS_ENABLE_SUMMARY: "true"
+
   docker:
-    name: docker build (no push)
+    name: docker build + container smoke (no push)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: test
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check for Dockerfile
-        id: dockerfile
-        run: |
-          if [ -f Dockerfile ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "present=false" >> "$GITHUB_OUTPUT"; fi
-
       - name: Set up Docker Buildx
-        if: steps.dockerfile.outputs.present == 'true'
         uses: docker/setup-buildx-action@v3
 
       - name: Build image (target slim, no push)
-        if: steps.dockerfile.outputs.present == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -87,20 +99,36 @@ jobs:
           push: false
           load: true
           tags: sec-filing-qa:ci
+          build-args: |
+            GIT_SHA=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Smoke the container
-        if: steps.dockerfile.outputs.present == 'true'
+      - name: Run the container (zero config -> fixture index, provider=mock)
+        run: docker run -d --rm -p 8080:8080 --name secqa sec-filing-qa:ci
+
+      - name: Smoke /healthz, /readyz and /v1/ask
         run: |
-          docker run -d --rm -p 8080:8080 --name secqa sec-filing-qa:ci
-          for i in $(seq 1 30); do
-            if curl -fsS http://localhost:8080/healthz; then break; fi
+          set -euo pipefail
+          for i in $(seq 1 45); do
+            if curl -fsS http://localhost:8080/readyz >/dev/null 2>&1; then break; fi
             sleep 2
           done
-          curl -fsS http://localhost:8080/healthz
-          docker stop secqa
+          echo "## Container smoke (target slim)" >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          curl -fsS http://localhost:8080/healthz | tee -a "$GITHUB_STEP_SUMMARY"; echo >> "$GITHUB_STEP_SUMMARY"
+          curl -fsS http://localhost:8080/readyz | tee -a "$GITHUB_STEP_SUMMARY"; echo >> "$GITHUB_STEP_SUMMARY"
+          curl -fsS -X POST http://localhost:8080/v1/ask \
+            -H 'Content-Type: application/json' \
+            -d '{"question": "What were total net sales in fiscal 2023?", "provider": "mock", "mode": "rag", "k": 4}' \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+          echo >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Dockerfile not present yet
-        if: steps.dockerfile.outputs.present != 'true'
-        run: echo "Dockerfile is provided by the ops module; skipping the docker build."
+      - name: Container logs
+        if: always()
+        run: docker logs secqa || true
+
+      - name: Stop the container
+        if: always()
+        run: docker stop secqa || true

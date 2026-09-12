@@ -1,0 +1,142 @@
+# Deploy the full image to Google Cloud Run (SPEC section 10).
+#
+# Guarded by the repository variable DEPLOY_GCP == 'true' so forks and the pre-setup repo never
+# try to deploy. Auth is Workload Identity Federation (no JSON keys in GitHub). Cloud Run only
+# pulls from Artifact Registry, so the GHCR image built by build.yml is mirrored by digest-free
+# tag into the project's repository first. Vendor keys reach the service only through Secret
+# Manager references (`--set-secrets`), never as plain env vars in this file.
+#
+# Repository variables (Settings -> Variables):
+#   DEPLOY_GCP=true                 enable this workflow
+#   GCP_PROJECT_ID                  e.g. crystal-496615
+#   GCP_REGION                      default us-central1
+#   GCP_AR_REPO                     Artifact Registry repo name, default sec-filing-qa
+#   GCP_SERVICE_ACCOUNT             deployer SA email bound to the WIF pool
+#   CLOUD_RUN_SERVICE               default sec-filing-qa
+#   CLOUD_RUN_SET_SECRETS           optional, e.g. "OPENAI_API_KEY=openai-api-key:latest,ANTHROPIC_API_KEY=anthropic-api-key:latest"
+#   CLOUD_RUN_MIN_INSTANCES         default 0 (set 1 during interview weeks; documented cold start 10-20 s)
+#   SECQA_INDEX_URL                 https:// or gs:// index tarball (empty -> fixture index)
+#   SECQA_EMBEDDER                  default local (must match the index; 'hashing' for the fixture)
+#   SECQA_PROVIDER                  default mock
+# Repository secrets:
+#   GCP_WIF_PROVIDER                projects/<n>/locations/global/workloadIdentityPools/<pool>/providers/<provider>
+name: deploy-cloudrun
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to deploy (commit SHA or vX.Y.Z); default: this commit"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  packages: read
+  id-token: write
+
+concurrency:
+  group: deploy-cloudrun
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: gcloud run deploy
+    if: vars.DEPLOY_GCP == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: gcp
+    env:
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      REGION: ${{ vars.GCP_REGION || 'us-central1' }}
+      AR_REPO: ${{ vars.GCP_AR_REPO || 'sec-filing-qa' }}
+      SERVICE: ${{ vars.CLOUD_RUN_SERVICE || 'sec-filing-qa' }}
+      SOURCE_IMAGE: ghcr.io/${{ github.repository_owner }}/sec-filing-qa:${{ inputs.image_tag || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Log in to GHCR (source image)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Mirror the image into Artifact Registry
+        id: mirror
+        run: |
+          set -euo pipefail
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+          TARGET="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/sec-filing-qa:${{ inputs.image_tag || github.sha }}"
+          docker pull "${SOURCE_IMAGE}"
+          docker tag "${SOURCE_IMAGE}" "${TARGET}"
+          docker push "${TARGET}"
+          echo "image=${TARGET}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy to Cloud Run
+        id: deploy
+        run: |
+          set -euo pipefail
+          # --set-env-vars and --update-env-vars are mutually exclusive in gcloud: build one list.
+          ENV_VARS="SECQA_PROVIDER=${{ vars.SECQA_PROVIDER || 'mock' }},SECQA_EMBEDDER=${{ vars.SECQA_EMBEDDER || 'local' }},SECQA_LOG_JSON=true,SECQA_GIT_SHA=${{ github.sha }}"
+          if [ -n "${{ vars.SECQA_INDEX_URL }}" ]; then
+            ENV_VARS="${ENV_VARS},SECQA_INDEX_URL=${{ vars.SECQA_INDEX_URL }}"
+          fi
+          ARGS=(
+            --image "${{ steps.mirror.outputs.image }}"
+            --region "${REGION}"
+            --platform managed
+            --memory 2Gi
+            --cpu 1
+            --cpu-boost
+            --min-instances "${{ vars.CLOUD_RUN_MIN_INSTANCES || '0' }}"
+            --max-instances 2
+            --concurrency 4
+            --timeout 120
+            --port 8080
+            --allow-unauthenticated
+            --set-env-vars "${ENV_VARS}"
+          )
+          if [ -n "${{ vars.CLOUD_RUN_SET_SECRETS }}" ]; then
+            ARGS+=(--set-secrets "${{ vars.CLOUD_RUN_SET_SECRETS }}")
+          fi
+          gcloud run deploy "${SERVICE}" "${ARGS[@]}" --quiet
+          URL=$(gcloud run services describe "${SERVICE}" --region "${REGION}" --format 'value(status.url)')
+          echo "url=${URL}" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke /readyz and /v1/ask (provider=mock)
+        env:
+          URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            if curl -fsS "${URL}/readyz" >/dev/null 2>&1; then break; fi
+            sleep 5
+          done
+          READY=$(curl -fsS "${URL}/readyz")
+          ASK=$(curl -fsS -X POST "${URL}/v1/ask" \
+            -H 'Content-Type: application/json' \
+            -d '{"question": "What were total net sales in fiscal 2023?", "provider": "mock", "mode": "rag", "k": 4}')
+          {
+            echo "## Cloud Run smoke: ${URL}"
+            echo "Image: \`${{ steps.mirror.outputs.image }}\`"
+            echo
+            echo '```json'
+            echo "${READY}"
+            echo "${ASK}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "${ASK}" | python3 -c 'import json,sys; a=json.load(sys.stdin); assert a["citations"], "no citations in the mock answer"; print("citations:", len(a["citations"]), "verified:", sum(c["verified"] for c in a["citations"]))'

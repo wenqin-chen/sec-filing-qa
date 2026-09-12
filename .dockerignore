@@ -1,0 +1,69 @@
+# Keep the build context to what the Dockerfile COPYs: pyproject/uv.lock, src, README/LICENSE,
+# configs, data/companies.yaml, two fixture files and two scripts. Everything else is noise or
+# must never reach an image (secrets, datasets, indexes, cassettes).
+
+# VCS, editors, local tooling
+.git
+.github
+.gitignore
+.pre-commit-config.yaml
+.gitleaks.toml
+.idea
+.vscode
+.DS_Store
+*.swp
+
+# Python build/runtime artefacts and virtualenvs
+__pycache__
+*.py[cod]
+*.egg-info
+build
+dist
+.venv
+venv
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+.coverage.*
+coverage.xml
+htmlcov
+
+# Secrets and local configuration (the .env.example is documentation, not needed in the image)
+.env
+.env.*
+!.env.example
+
+# Data: raw datasets, PDFs, caches, indexes and release tarballs are fetched at run time
+data/*
+!data/companies.yaml
+results
+cassettes
+*.duckdb
+*.duckdb.wal
+*.tar.zst
+*.pdf
+
+# Model caches
+.cache
+models
+huggingface
+sentence_transformers
+torch_cache
+
+# Tests, docs and deployment material are not runtime inputs (fixtures are allow-listed)
+tests/*
+!tests/fixtures
+tests/fixtures/*
+!tests/fixtures/eval_fixture_pages.json
+!tests/fixtures/fb_mini.jsonl
+docs
+infra
+scripts/*
+!scripts/entrypoint.sh
+!scripts/bootstrap_demo_index.py
+Makefile
+docker-compose.yml
+Dockerfile
+*.md
+!README.md

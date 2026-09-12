@@ -1,0 +1,28 @@
+# gitleaks configuration (CI job `gitleaks` in ci.yml and the pre-commit hook).
+# Extends the default ruleset; the allowlist covers placeholders that look like keys on purpose
+# (fixtures, examples, docs) and paths that are never real credentials.
+title = "sec-filing-qa"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Placeholders and synthetic fixtures"
+paths = [
+  '''^\.env\.example$''',
+  '''^tests/fixtures/.*\.(json|yaml|jsonl|md)$''',
+  '''^uv\.lock$''',
+  '''^infra/.*\.example$''',
+]
+regexes = [
+  '''sk-test-[A-Za-z0-9_-]+''',
+  '''sk-ant-test-[A-Za-z0-9_-]+''',
+  '''(?i)(openai|anthropic|secqa)_api_key\s*[:=]\s*("|')?(\$\{\{|\$[A-Z_]+|<[^>]+>|xxx|changeme|placeholder|test|dummy)''',
+  '''AKIA[0-9A-Z]{16}EXAMPLE''',
+]
+stopwords = [
+  "example",
+  "placeholder",
+  "fixture",
+  "synthetic",
+]

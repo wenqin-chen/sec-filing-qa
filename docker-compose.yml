@@ -1,0 +1,49 @@
+# Local container run (mirrors what Cloud Run / Azure Container Apps execute).
+#
+#   docker compose up --build            # full image, fixture index, provider=mock, http://localhost:8080/docs
+#   IMAGE_TARGET=slim docker compose up  # slim image
+#
+# Keys are read from a local `.env` (gitignored; see .env.example) and never baked into the image.
+# Set SECQA_INDEX_URL (https://, gs:// or file://) to serve a real index; the `secqa-data` volume
+# keeps the downloaded or bootstrapped index between restarts.
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: ${IMAGE_TARGET:-full}
+      args:
+        GIT_SHA: ${GIT_SHA:-unknown}
+    image: sec-filing-qa:${IMAGE_TARGET:-full}
+    ports:
+      - "${PORT:-8080}:8080"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PORT: "8080"
+      SECQA_DUCKDB_PATH: /data/index.duckdb
+      SECQA_PROVIDER: ${SECQA_PROVIDER:-mock}
+      SECQA_EMBEDDER: ${SECQA_EMBEDDER:-hashing}
+      SECQA_INDEX_URL: ${SECQA_INDEX_URL:-}
+      SECQA_LOG_JSON: "true"
+    volumes:
+      - secqa-data:/data
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/readyz', timeout=4)"
+      interval: 30s
+      timeout: 5s
+      start_period: 90s
+      retries: 3
+    restart: unless-stopped
+    read_only: false
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  secqa-data:

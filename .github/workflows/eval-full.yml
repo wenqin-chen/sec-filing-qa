@@ -1,0 +1,156 @@
+# Full FinanceBench evaluation row (SPEC section 10 / 7). Dispatch only: it spends real money.
+#
+# Downloads the published index (SECQA_INDEX_URL) and the dataset (Hugging Face; never
+# committed), runs one config with cassettes recorded, uploads the cassettes as a workflow
+# artifact (Release assets are attached by hand; cassettes never go to git), and opens a PR that
+# adds results/<config>/<run_id>/{config.json,predictions.jsonl,summary.json} (ids only, no
+# dataset text). Cost is capped by the config's max_total_cost_usd and the optional --limit.
+#
+# Secrets: OPENAI_API_KEY and/or ANTHROPIC_API_KEY (the config decides which), SEC_USER_AGENT.
+# Variables: SECQA_INDEX_URL (required), HF_DATASET_REVISION (optional pin).
+name: eval-full
+
+on:
+  workflow_dispatch:
+    inputs:
+      config:
+        description: "Config file under configs/ (e.g. rag_hybrid_claude.yaml)"
+        required: true
+        default: "rag_hybrid_claude.yaml"
+      limit:
+        description: "Only the first N questions (empty = all 150)"
+        required: false
+        default: ""
+      open_pr:
+        description: "Open a pull request with the results directory"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: eval-full
+  cancel-in-progress: false
+
+env:
+  UV_FROZEN: "1"
+  SECQA_LOG_JSON: "true"
+
+jobs:
+  eval:
+    name: secqa eval --config ${{ inputs.config }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Guard - index URL configured
+        run: |
+          if [ -z "${{ vars.SECQA_INDEX_URL }}" ]; then
+            echo "::error::Set the repository variable SECQA_INDEX_URL to the published index tarball"; exit 1
+          fi
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.21"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Install project (dev + vendor SDKs + local embedder)
+        run: uv sync --extra dev --extra openai --extra anthropic --extra local
+
+      - name: Environment check (keys, model ids, User-Agent, index)
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+        run: uv run --no-sync secqa doctor
+
+      - name: Fetch the published index
+        run: uv run --no-sync secqa index fetch "${{ vars.SECQA_INDEX_URL }}" --dest data/index.duckdb
+
+      - name: Fetch FinanceBench (Hugging Face; cached locally, never committed)
+        env:
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+        run: |
+          if [ -n "${{ vars.HF_DATASET_REVISION }}" ]; then
+            uv run --no-sync secqa data financebench --revision "${{ vars.HF_DATASET_REVISION }}"
+          else
+            uv run --no-sync secqa data financebench
+          fi
+
+      - name: Run the evaluation row (cassettes recorded)
+        id: run
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+          SECQA_CASSETTE_MODE: record
+          SECQA_GIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ -n "${{ inputs.limit }}" ]; then
+            uv run --no-sync secqa eval --config "configs/${{ inputs.config }}" --limit "${{ inputs.limit }}"
+          else
+            uv run --no-sync secqa eval --config "configs/${{ inputs.config }}"
+          fi
+          CONFIG_NAME=$(basename "${{ inputs.config }}" .yaml)
+          RUN_DIR=$(ls -d results/"${CONFIG_NAME}"/*/ | sort | tail -n 1)
+          RUN_ID=$(basename "${RUN_DIR}")
+          echo "config_name=${CONFIG_NAME}" >> "$GITHUB_OUTPUT"
+          echo "run_dir=${RUN_DIR%/}" >> "$GITHUB_OUTPUT"
+          echo "run_id=${RUN_ID}" >> "$GITHUB_OUTPUT"
+          {
+            echo "## ${CONFIG_NAME} / ${RUN_ID}"
+            echo '```json'
+            cat "${RUN_DIR}/summary.json"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Pack cassettes (Release asset; never committed)
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          if [ -d "cassettes/${{ steps.run.outputs.run_id }}" ]; then
+            tar -C cassettes -cf - "${{ steps.run.outputs.run_id }}" | uv run --no-sync python -c "import sys, zstandard; sys.stdout.buffer.write(zstandard.ZstdCompressor(level=10).compress(sys.stdin.buffer.read()))" > "artifacts/${{ steps.run.outputs.run_id }}.tar.zst"
+          fi
+
+      - name: Upload cassettes and results
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-${{ steps.run.outputs.config_name }}-${{ steps.run.outputs.run_id }}
+          path: |
+            artifacts/*.tar.zst
+            ${{ steps.run.outputs.run_dir }}/config.json
+            ${{ steps.run.outputs.run_dir }}/predictions.jsonl
+            ${{ steps.run.outputs.run_dir }}/summary.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Open a pull request with the results directory
+        if: inputs.open_pr
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          add-paths: |
+            results/${{ steps.run.outputs.config_name }}/${{ steps.run.outputs.run_id }}/config.json
+            results/${{ steps.run.outputs.config_name }}/${{ steps.run.outputs.run_id }}/predictions.jsonl
+            results/${{ steps.run.outputs.config_name }}/${{ steps.run.outputs.run_id }}/summary.json
+          branch: eval/${{ steps.run.outputs.config_name }}-${{ steps.run.outputs.run_id }}
+          commit-message: "eval: ${{ steps.run.outputs.config_name }} ${{ steps.run.outputs.run_id }}"
+          title: "eval: ${{ steps.run.outputs.config_name }} (${{ steps.run.outputs.run_id }})"
+          body: |
+            Automated evaluation row from `eval-full.yml` (run ${{ github.run_id }}).
+
+            - config: `configs/${{ inputs.config }}`
+            - run: `results/${{ steps.run.outputs.config_name }}/${{ steps.run.outputs.run_id }}`
+            - cassettes: workflow artifact `eval-${{ steps.run.outputs.config_name }}-${{ steps.run.outputs.run_id }}` (attach to the Release; not committed)
+
+            Results files contain `financebench_id`s, predictions, verdicts and usage only — no dataset text (CC-BY-NC-4.0).
+            Regenerate RESULTS.md with `secqa report results/ --out RESULTS.md` after merging.
