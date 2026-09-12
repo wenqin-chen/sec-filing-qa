@@ -1,0 +1,180 @@
+# Curated XBRL metrics for the `financials` view and `lookup_fact` (secqa.xbrl.financials).
+#
+# Each metric lists the concept names (aliases) that companies use for it, in priority order:
+# the FIRST alias with an annual value for a given (company, fiscal year) is used. Concepts are
+# us-gaap unless prefixed with another taxonomy (`dei:`). `unit` is the companyfacts unit key
+# the value must be reported in, so an EPS concept can never be mistaken for a USD amount.
+#
+# Names are validated at load time (metric: lowercase snake_case; concept: CamelCase identifier)
+# because they are spliced into the view's SQL. Order here is the column order of the view.
+version: 1
+metrics:
+  # ---- income statement ---------------------------------------------------------------
+  revenue:
+    unit: USD
+    tags:
+      - Revenues
+      - RevenueFromContractWithCustomerExcludingAssessedTax
+      - SalesRevenueNet
+      - RevenueFromContractWithCustomerIncludingAssessedTax
+      - SalesRevenueGoodsNet
+      - RevenuesNetOfInterestExpense
+  cost_of_revenue:
+    unit: USD
+    tags:
+      - CostOfRevenue
+      - CostOfGoodsAndServicesSold
+      - CostOfGoodsSold
+      - CostOfServices
+      - CostOfGoodsAndServiceExcludingDepreciationDepletionAndAmortization
+  gross_profit:
+    unit: USD
+    tags:
+      - GrossProfit
+  rd_expense:
+    unit: USD
+    tags:
+      - ResearchAndDevelopmentExpense
+      - ResearchAndDevelopmentExpenseExcludingAcquiredInProcessCost
+  sga_expense:
+    unit: USD
+    tags:
+      - SellingGeneralAndAdministrativeExpense
+  operating_expenses:
+    unit: USD
+    tags:
+      - OperatingExpenses
+      - CostsAndExpenses
+  operating_income:
+    unit: USD
+    tags:
+      - OperatingIncomeLoss
+  interest_expense:
+    unit: USD
+    tags:
+      - InterestExpense
+      - InterestExpenseNonoperating
+      - InterestExpenseDebt
+  pretax_income:
+    unit: USD
+    tags:
+      - IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest
+      - IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments
+  income_tax_expense:
+    unit: USD
+    tags:
+      - IncomeTaxExpenseBenefit
+  net_income:
+    unit: USD
+    tags:
+      - NetIncomeLoss
+      - ProfitLoss
+      - NetIncomeLossAvailableToCommonStockholdersBasic
+  eps_basic:
+    unit: USD/shares
+    tags:
+      - EarningsPerShareBasic
+  eps_diluted:
+    unit: USD/shares
+    tags:
+      - EarningsPerShareDiluted
+  shares_diluted_weighted:
+    unit: shares
+    tags:
+      - WeightedAverageNumberOfDilutedSharesOutstanding
+  depreciation_amortization:
+    unit: USD
+    tags:
+      - DepreciationDepletionAndAmortization
+      - DepreciationAndAmortization
+      - DepreciationAmortizationAndAccretionNet
+      - Depreciation
+  # ---- balance sheet ------------------------------------------------------------------
+  cash:
+    unit: USD
+    tags:
+      - CashAndCashEquivalentsAtCarryingValue
+      - CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents
+  receivables:
+    unit: USD
+    tags:
+      - AccountsReceivableNetCurrent
+      - ReceivablesNetCurrent
+  inventory:
+    unit: USD
+    tags:
+      - InventoryNet
+  current_assets:
+    unit: USD
+    tags:
+      - AssetsCurrent
+  ppe_net:
+    unit: USD
+    tags:
+      - PropertyPlantAndEquipmentNet
+      - PropertyPlantAndEquipmentAndFinanceLeaseRightOfUseAssetAfterAccumulatedDepreciationAndAmortization
+  goodwill:
+    unit: USD
+    tags:
+      - Goodwill
+  total_assets:
+    unit: USD
+    tags:
+      - Assets
+  current_liabilities:
+    unit: USD
+    tags:
+      - LiabilitiesCurrent
+  long_term_debt:
+    unit: USD
+    tags:
+      - LongTermDebtNoncurrent
+      - LongTermDebt
+      - LongTermDebtAndCapitalLeaseObligations
+  total_liabilities:
+    unit: USD
+    tags:
+      - Liabilities
+  equity:
+    unit: USD
+    tags:
+      - StockholdersEquity
+      - StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest
+  shares_outstanding:
+    unit: shares
+    tags:
+      - dei:EntityCommonStockSharesOutstanding
+      - CommonStockSharesOutstanding
+  # ---- cash flow ----------------------------------------------------------------------
+  cfo:
+    unit: USD
+    tags:
+      - NetCashProvidedByUsedInOperatingActivities
+      - NetCashProvidedByUsedInOperatingActivitiesContinuingOperations
+  capex:
+    unit: USD
+    tags:
+      - PaymentsToAcquirePropertyPlantAndEquipment
+      - PaymentsToAcquireProductiveAssets
+      - PaymentsForCapitalImprovements
+  dividends:
+    unit: USD
+    tags:
+      - PaymentsOfDividends
+      - PaymentsOfDividendsCommonStock
+      - DividendsCommonStockCash
+      - DividendsCash
+  share_repurchases:
+    unit: USD
+    tags:
+      - PaymentsForRepurchaseOfCommonStock
+  investing_cash_flow:
+    unit: USD
+    tags:
+      - NetCashProvidedByUsedInInvestingActivities
+      - NetCashProvidedByUsedInInvestingActivitiesContinuingOperations
+  financing_cash_flow:
+    unit: USD
+    tags:
+      - NetCashProvidedByUsedInFinancingActivities
+      - NetCashProvidedByUsedInFinancingActivitiesContinuingOperations

@@ -1,0 +1,272 @@
+{
+ "cik": 1234567,
+ "entityName": "Fixture Corp",
+ "_comment": "Synthetic companyfacts document for secqa.xbrl tests; not a real filing. Exercises: exact duplicate, restated comparative, alias switch, Q4 duration inside a 10-K, 10-Q rows, dei cover-date instant, comparative-only period.",
+ "facts": {
+  "us-gaap": {
+   "Revenues": {
+    "label": "Revenues",
+    "description": "Synthetic.",
+    "units": {
+     "USD": [
+      {
+       "start": "2021-01-01",
+       "end": "2021-12-31",
+       "val": 1200000000,
+       "accn": "0001234567-22-000010",
+       "fy": 2021,
+       "fp": "FY",
+       "form": "10-K",
+       "filed": "2022-02-15"
+      },
+      {
+       "start": "2021-01-01",
+       "end": "2021-12-31",
+       "val": 1200000000,
+       "accn": "0001234567-23-000010",
+       "fy": 2022,
+       "fp": "FY",
+       "form": "10-K",
+       "filed": "2023-02-15"
+      },
+      {
+       "start": "2021-01-01",
+       "end": "2021-12-31",
+       "val": 1210000000,
+       "accn": "0001234567-24-000010",
+       "fy": 2023,
+       "fp": "FY",
+       "form": "10-K",
+       "filed": "2024-02-15",
+       "frame": "CY2021"
+      },
+      {
+       "start": "2022-01-01",
+       "end": "2022-12-31",
+       "val": 1400000000,
+       "accn": "0001234567-23-000010",
+       "fy": 2022,
+       "fp": "FY",
+       "form": "10-K",
+       "filed": "2023-02-15"
+      },
+      {
+       "start": "2022-01-01",
+       "end": "2022-12-31",
+       "val": 1400000000,
+       "accn": "0001234567-23-000010",
+       "fy": 2022,
+       "fp": "FY",
+       "form": "10-K",
+       "filed": "2023-02-15"
+      },
+      {
+       "start": "2022-01-01",
+       "end": "2022-12-31",
+       "val": 1400000000,
+       "accn": "0001234567-24-000010",
+       "fy": 2023,
+       "fp": "FY",
+       "form": "10-K",
+       "filed": "2024-02-15",
+       "frame": "CY2022"
+      },
+      {
+       "start": "2022-10-01",
+       "end": "2022-12-31",
+       "val": 380000000,
+       "accn": "0001234567-23-000010",
+       "fy": 2022,
+       "fp": "FY",
+       "form": "10-K",
+       "filed": "2023-02-15"
+      },
+      {
+       "start": "2023-04-01",
+       "end": "2023-06-30",
+       "val": 350000000,
+       "accn": "0001234567-23-000050",
+       "fy": 2023,
+       "fp": "Q2",
+       "form": "10-Q",
+       "filed": "2023-08-01",
+       "frame": "CY2023Q2"
+      }
+     ]
+    }
+   },
+   "RevenueFromContractWithCustomerExcludingAssessedTax": {
+    "label": "Revenue from contracts",
+    "description": "Synthetic.",
+    "units": {
+     "USD": [
+      {
+       "start": "2023-01-01",
+       "end": "2023-12-31",
+       "val": 1577000000,
+       "accn": "0001234567-24-000010",
+       "fy": 2023,
+       "fp": "FY",
+       "form": "10-K",
+       "filed": "2024-02-15",
+       "frame": "CY2023"
+      }
+     ]
+    }
+   },
+   "NetIncomeLoss": {
+    "label": "Net income",
+    "description": "Synthetic.",
+    "units": {
+     "USD": [
+      {
+       "start": "2019-01-01",
+       "end": "2019-12-31",
+       "val": 150000000,
+       "accn": "0001234567-22-000010",
+       "fy": 2021,
+       "fp": "FY",
+       "form": "10-K",
+       "filed": "2022-02-15"
+      },
+      {
+       "start": "2021-01-01",
+       "end": "2021-12-31",
+       "val": 190000000,
+       "accn": "0001234567-22-000010",
+       "fy": 2021,
+       "fp": "FY",
+       "form": "10-K",
+       "filed": "2022-02-15"
+      },
+      {
+       "start": "2022-01-01",
+       "end": "2022-12-31",
+       "val": 210000000,
+       "accn": "0001234567-23-000010",
+       "fy": 2022,
+       "fp": "FY",
+       "form": "10-K",
+       "filed": "2023-02-15"
+      },
+      {
+       "start": "2022-01-01",
+       "end": "2022-12-31",
+       "val": 210000000,
+       "accn": "0001234567-24-000010",
+       "fy": 2023,
+       "fp": "FY",
+       "form": "10-K",
+       "filed": "2024-02-15",
+       "frame": "CY2022"
+      },
+      {
+       "start": "2023-01-01",
+       "end": "2023-12-31",
+       "val": 250000000,
+       "accn": "0001234567-24-000010",
+       "fy": 2023,
+       "fp": "FY",
+       "form": "10-K",
+       "filed": "2024-02-15",
+       "frame": "CY2023"
+      }
+     ]
+    }
+   },
+   "Assets": {
+    "label": "Assets",
+    "description": "Synthetic.",
+    "units": {
+     "USD": [
+      {
+       "end": "2022-12-31",
+       "val": 5000000000,
+       "accn": "0001234567-23-000010",
+       "fy": 2022,
+       "fp": "FY",
+       "form": "10-K",
+       "filed": "2023-02-15"
+      },
+      {
+       "end": "2022-12-31",
+       "val": 5000000000,
+       "accn": "0001234567-24-000010",
+       "fy": 2023,
+       "fp": "FY",
+       "form": "10-K",
+       "filed": "2024-02-15",
+       "frame": "CY2022Q4I"
+      },
+      {
+       "end": "2023-12-31",
+       "val": 5600000000,
+       "accn": "0001234567-24-000010",
+       "fy": 2023,
+       "fp": "FY",
+       "form": "10-K",
+       "filed": "2024-02-15"
+      },
+      {
+       "end": "2023-12-31",
+       "val": 5600000000,
+       "accn": "0001234567-24-000030",
+       "fy": 2024,
+       "fp": "Q1",
+       "form": "10-Q",
+       "filed": "2024-05-01",
+       "frame": "CY2023Q4I"
+      }
+     ]
+    }
+   },
+   "EarningsPerShareDiluted": {
+    "label": "EPS diluted",
+    "description": "Synthetic.",
+    "units": {
+     "USD/shares": [
+      {
+       "start": "2023-01-01",
+       "end": "2023-12-31",
+       "val": 2.45,
+       "accn": "0001234567-24-000010",
+       "fy": 2023,
+       "fp": "FY",
+       "form": "10-K",
+       "filed": "2024-02-15",
+       "frame": "CY2023"
+      }
+     ]
+    }
+   }
+  },
+  "dei": {
+   "EntityCommonStockSharesOutstanding": {
+    "label": "Shares outstanding",
+    "description": "Synthetic.",
+    "units": {
+     "shares": [
+      {
+       "end": "2023-01-31",
+       "val": 102000000,
+       "accn": "0001234567-23-000010",
+       "fy": 2022,
+       "fp": "FY",
+       "form": "10-K",
+       "filed": "2023-02-15"
+      },
+      {
+       "end": "2024-01-31",
+       "val": 100000000,
+       "accn": "0001234567-24-000010",
+       "fy": 2023,
+       "fp": "FY",
+       "form": "10-K",
+       "filed": "2024-02-15"
+      }
+     ]
+    }
+   }
+  }
+ }
+}
