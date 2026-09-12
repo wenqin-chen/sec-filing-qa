@@ -1,0 +1,14 @@
+# Same as retrieval_dense.yaml but restricted to the question's own document(s) (doc_filter: true),
+# the realistic setting where the company and filing are known.
+# Retrieval-only row (no answering model, no keys): provider mock:abstain records page_recall@k,
+# evidence overlap recall and MRR over the FinanceBench index built with the local embedder.
+name: retrieval_dense_docfilter
+mode: rag
+provider: mock:abstain
+embedder: local
+strategy: dense
+k: 20
+doc_filter: true
+judge: rule
+max_cost_usd_per_q: 0.0
+cassette_mode: "off"

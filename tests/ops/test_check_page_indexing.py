@@ -109,3 +109,49 @@ def test_sample_is_deterministic_and_skips_missing_pdfs(cpi: ModuleType) -> None
 def test_main_rejects_bad_arguments(cpi: ModuleType) -> None:
     assert cpi.main(["--n", "0"]) == 2
     assert cpi.main(["--min-pass", "1.5"]) == 2
+
+
+def test_locate_evidence_accepts_reordered_table_text(cpi: ModuleType) -> None:
+    """A different PDF extractor reorders table cells; the shingle rule still finds the page."""
+    page = (
+        "Consolidated Statement of Cash Flows Years ended December 31 (Millions) 2018 2017 2016 "
+        "Net income including noncontrolling interest 5,363 4,869 5,058 Depreciation and "
+        "amortization 1,488 1,544 1,474 Purchases of property, plant and equipment (1,577) "
+        "(1,373) (1,420) Proceeds from sale of PP&E and other assets 262 49 58"
+    )
+    # Same content with the year columns and one row moved: verbatim containment fails.
+    evidence = (
+        "Consolidated Statement of Cash Flows (Millions) Years ended December 31 2018 2017 2016 "
+        "Purchases of property, plant and equipment (1,577) (1,373) (1,420) Net income including "
+        "noncontrolling interest 5,363 4,869 5,058 Depreciation and amortization 1,488 1,544 1,474"
+    )
+    pages = {
+        1: "Item 1. Business. We are a diversified technology company.",
+        2: page,
+        3: "Item 9A.",
+    }
+    assert cpi.normalise(evidence) not in cpi.normalise(page)
+    assert cpi.shingle_overlap(cpi.shingles(evidence), page) >= cpi.MIN_SHINGLE_OVERLAP
+    assert cpi.locate_evidence(evidence, pages, gold_page=2) == (0,)
+    assert cpi.locate_evidence(evidence, pages, gold_page=1) == (1,)
+    unrelated = (
+        "Risk factors related to cybersecurity, supply chain disruption and foreign exchange"
+    )
+    assert cpi.shingle_overlap(cpi.shingles(unrelated), page) == 0.0
+    assert cpi.locate_evidence(unrelated, pages, gold_page=2) == ()
+
+
+def test_best_matching_page_and_agreement(cpi: ModuleType) -> None:
+    pages = {
+        1: "alpha beta gamma delta epsilon zeta eta theta",
+        2: "iota kappa lambda mu nu xi omicron pi",
+        3: "",
+    }
+    assert cpi.best_matching_page("iota kappa lambda mu nu xi omicron", pages) == (2, 1.0)
+    assert cpi.best_matching_page("", pages) == (None, 0.0)
+    assert cpi.best_matching_page("words", {}) == (None, 0.0)
+    hit_ok = cpi.EvidenceHit("d", 2, (0,), best_page=2, best_overlap=1.0)
+    hit_bad = cpi.EvidenceHit("d", 1, (), best_page=2, best_overlap=0.4)
+    report = cpi.Report()
+    report.results.append(cpi.QuestionResult("q1", "d", [hit_ok, hit_bad]))
+    assert report.best_page_agreement() == (1, 2)

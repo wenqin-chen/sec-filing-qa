@@ -210,3 +210,27 @@ reason (`requires OPENAI_API_KEY and the FinanceBench index`, ...), never an omi
 - Resume bullets quote only numbers in `RESULTS.md` at the tagged release; if the LLM rows are
   not complete, the fallback wording is "RAG + agent system with offline evaluation harness and
   published retrieval results", never "benchmarked OpenAI and Claude".
+
+## Findings so far (retrieval-only rows, 2026-09-12)
+
+Six key-free rows are complete (FinanceBench open set, 150 questions, bge-small-en-v1.5 index,
+k = 20; numbers in `RESULTS.md`). Three things are already visible before any answering model runs:
+
+1. **Knowing the filing matters more than the retriever.** Restricting retrieval to the question's
+   own document(s) (`doc_filter: true`, the realistic setting: the user names the company and
+   year) lifts page recall@20 from 24.7% to 65.3% for BM25, from 54.0% to 79.3% for dense, and
+   from 50.0% to 74.7% for hybrid. Corpus-wide retrieval over 84 filings is the hard, and less
+   realistic, setting; both are reported.
+2. **Hybrid fusion currently trails dense retrieval** on page recall (74.7% vs 79.3% document-
+   filtered; 50.0% vs 54.0% corpus-wide) while edging it on gold-page MRR (0.425 vs 0.421). The
+   reciprocal-rank fusion gives the weak BM25 ranking equal weight; a weighted fusion or a
+   BM25 score floor is the obvious next ablation. This is reported as measured, not tuned away.
+3. **BM25 over filings is weak** (page recall@20 24.7% corpus-wide, 65.3% document-filtered).
+   FinanceBench questions paraphrase line items ("capital expenditure" for "purchases of
+   property, plant and equipment") and lean on numbers, which lexical matching over chunked
+   10-K pages handles poorly; dense retrieval closes most of that gap.
+
+Page-level recall is only publishable because the page-indexing gate passes (`docs/DATA.md`:
+25/25 on the seed-0 sample, 46/50 on a seed-1 sample, best-page agreement 33/33 and 60/60).
+The remaining headroom for answering models is bounded by these recall numbers: with
+document-filtered dense retrieval, roughly one question in five has no gold page in the top 20.

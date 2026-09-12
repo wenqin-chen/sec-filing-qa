@@ -4,7 +4,8 @@
 FinanceBench's ``evidence_page_num`` is 0-indexed; secqa stores 1-based physical pages and the
 loader adds one. This script samples questions (seed 0), extracts their PDFs with the same
 ``pypdfium2`` path the index uses, and asserts that each evidence text is found on its 1-based
-gold page after whitespace/punctuation normalisation. For every miss it reports on which
+gold page after whitespace/punctuation normalisation (verbatim, or >= 50% of its 6-word
+shingles). For every miss it reports on which
 neighbouring page (offset -2..+2) the text *was* found, so an off-by-one shows up as a spike at
 ``+1`` or ``-1`` rather than as a vague recall drop.
 
@@ -42,6 +43,8 @@ DEFAULT_SEED = 0
 DEFAULT_MIN_PASS = 0.9
 DEFAULT_WINDOW = 2
 MIN_EVIDENCE_CHARS = 20
+SHINGLE_WORDS = 6
+MIN_SHINGLE_OVERLAP = 0.5  # fraction of the evidence's word shingles that must occur on the page
 START_MARKER = "<!-- page-indexing:start -->"
 END_MARKER = "<!-- page-indexing:end -->"
 
@@ -61,6 +64,8 @@ class EvidenceHit:
     doc_name: str
     gold_page: int
     found_offsets: tuple[int, ...]  # offsets (page - gold_page) where the text occurs
+    best_page: int | None = None  # page with the highest shingle overlap in the whole document
+    best_overlap: float = 0.0
     skipped: bool = False  # evidence too short to be a meaningful substring test
 
     @property
@@ -111,6 +116,17 @@ class Report:
         rate = self.pass_rate
         return rate is not None and rate >= self.min_pass
 
+    def best_page_agreement(self) -> tuple[int, int]:
+        """(hits whose best-overlap page is the gold page, checkable hits with a best page)."""
+        agree = total = 0
+        for result in self.checkable:
+            for hit in result.hits:
+                if hit.skipped or hit.best_page is None:
+                    continue
+                total += 1
+                agree += hit.best_page == hit.gold_page
+        return agree, total
+
     def offset_histogram(self) -> Counter[str]:
         """Where missed evidence was found: ``'+1'``, ``'-1'`` ... or ``'not found'``."""
         counts: Counter[str] = Counter()
@@ -131,20 +147,63 @@ class Report:
 # ---------------------------------------------------------------------------------------------
 
 
+def shingles(text: str, n: int = SHINGLE_WORDS) -> set[str]:
+    """Normalised ``n``-word shingles of ``text`` (one shingle when shorter than ``n`` words)."""
+    words = normalise(text).split()
+    if not words:
+        return set()
+    if len(words) <= n:
+        return {" ".join(words)}
+    return {" ".join(words[i : i + n]) for i in range(len(words) - n + 1)}
+
+
+def shingle_overlap(needle: set[str], page_text: str, n: int = SHINGLE_WORDS) -> float:
+    """Fraction of ``needle`` shingles present in ``page_text`` (0.0 when ``needle`` is empty)."""
+    if not needle:
+        return 0.0
+    return len(needle & shingles(page_text, n)) / len(needle)
+
+
+def best_matching_page(evidence_text: str, pages: dict[int, str]) -> tuple[int | None, float]:
+    """The page (any page of the document) with the highest shingle overlap, and that overlap."""
+    needle = shingles(evidence_text)
+    if not needle or not pages:
+        return None, 0.0
+    best_page, best = None, -1.0
+    for page_num, text in pages.items():
+        score = shingle_overlap(needle, text)
+        if score > best:
+            best_page, best = page_num, score
+    return best_page, max(best, 0.0)
+
+
 def locate_evidence(
-    evidence_text: str, pages: dict[int, str], gold_page: int, window: int = DEFAULT_WINDOW
+    evidence_text: str,
+    pages: dict[int, str],
+    gold_page: int,
+    window: int = DEFAULT_WINDOW,
+    min_overlap: float = MIN_SHINGLE_OVERLAP,
 ) -> tuple[int, ...]:
     """Offsets within ``[-window, +window]`` at which ``evidence_text`` occurs in ``pages``.
 
     ``pages`` maps 1-based page numbers to *raw* page text; both sides are normalised here.
+    The evidence "occurs" on a page when it is a verbatim substring after normalisation, or when
+    at least ``min_overlap`` of its ``SHINGLE_WORDS``-word shingles are present on the page.
+    The shingle rule exists because FinanceBench evidence was extracted with a different PDF tool:
+    table cells come out in a different order, so a verbatim test rejects the right page (measured
+    2026-09-12: 8/25 sampled evidence passages failed verbatim yet had 66-100% shingle overlap on
+    the gold page and no better page elsewhere). Unrelated pages score near zero.
     """
     needle = normalise(evidence_text)
     if not needle:
         return ()
+    needle_shingles = shingles(evidence_text)
     found: list[int] = []
     for offset in range(-window, window + 1):
         text = pages.get(gold_page + offset)
-        if text is not None and needle in normalise(text):
+        if text is None:
+            continue
+        if needle in normalise(text) or shingle_overlap(needle_shingles, text) >= min_overlap:
             found.append(offset)
     return tuple(found)
 
@@ -162,7 +221,10 @@ def check_question(
             hits.append(EvidenceHit(evidence.doc_name, evidence.page_num, (), skipped=True))
             continue
         offsets = locate_evidence(evidence.text, pages, evidence.page_num, window)
-        hits.append(EvidenceHit(evidence.doc_name, evidence.page_num, offsets))
+        best_page, best_overlap = best_matching_page(evidence.text, pages)
+        hits.append(
+            EvidenceHit(evidence.doc_name, evidence.page_num, offsets, best_page, best_overlap)
+        )
     if not hits:
         return QuestionResult(q.id, q.doc_name, (), error="question has no evidence")
     return QuestionResult(q.id, q.doc_name, tuple(hits))
@@ -233,6 +295,7 @@ def render_report(report: Report, *, now: datetime | None = None, seed: int = DE
     stamp = (now or datetime.now(UTC)).isoformat(timespec="seconds")
     rate = report.pass_rate
     verdict = "PASS" if report.ok else "FAIL"
+    agree, total = report.best_page_agreement()
     lines = [
         START_MARKER,
         "### Page-indexing check",
@@ -242,12 +305,20 @@ def render_report(report: Report, *, now: datetime | None = None, seed: int = DE
         "Assumption under test: FinanceBench `evidence_page_num` is 0-indexed, so secqa uses "
         "`page_num = evidence_page_num + 1` (1-based physical pages from pypdfium2).",
         "",
+        f"Match rule: evidence is on a page when it is a verbatim substring after normalisation "
+        f"or when >= {MIN_SHINGLE_OVERLAP:.0%} of its {SHINGLE_WORDS}-word shingles occur on that "
+        "page (FinanceBench evidence was extracted with a different PDF tool, so table cells can "
+        "be reordered).",
+        "",
         f"- Questions sampled: {len(report.results)}",
         f"- Checkable (PDF readable, evidence >= {MIN_EVIDENCE_CHARS} chars): "
         f"{len(report.checkable)}",
         f"- Evidence found on the gold page: {report.n_passed}/{len(report.checkable)}"
         + (f" ({rate:.1%})" if rate is not None else ""),
         f"- Threshold: {report.min_pass:.0%} -> **{verdict}**",
+        f"- Best-page agreement: {agree}/{total} evidence passages have the gold page as the "
+        "single highest-overlap page of their document (misses below are lower-overlap table "
+        "text on the right page, not wrong pages, whenever this equals the passage count)",
         "",
     ]
     histogram = report.offset_histogram()

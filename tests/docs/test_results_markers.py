@@ -110,9 +110,14 @@ def test_pending_rows_are_pending_not_omitted() -> None:
     smoke = {name for name in config_names if name.endswith("_mock")}
     for name in config_names - smoke:
         assert f"| `{name}` |" in block, f"config {name} missing from the results block"
-    for line in block.splitlines():
-        if line.startswith("| `") and line.endswith("| — |"):
-            raise AssertionError(f"an unrun row must carry a status, not a dash: {line}")
+    # Only the two matrix tables carry a Status column; the breakdown and latency tables end in a
+    # metric that is legitimately "—" for retrieval-only rows (no answering model, no faithfulness).
+    for heading in ("### Retrieval", "### Question answering"):
+        assert heading in block, heading
+        section = block.split(heading, 1)[1].split("\n###", 1)[0]
+        for line in section.splitlines():
+            if line.startswith("| `") and line.endswith("| — |"):
+                raise AssertionError(f"an unrun row must carry a status, not a dash: {line}")
     pending = re.findall(r"pending \(not run\): ([^|]+)\|", block)
     for reason in pending:
         assert reason.strip(), "a pending cell must state its reason"

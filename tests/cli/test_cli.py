@@ -92,7 +92,12 @@ def test_parse_years_and_csv() -> None:
 # ---- doctor ---------------------------------------------------------------------------------
 
 
-def test_doctor_passes_offline_with_no_keys(invoke: Invoke, tmp_path: Path) -> None:
+def test_doctor_passes_offline_with_no_keys(
+    invoke: Invoke, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Pin the index to an unbuilt temporary path so a real data/index.duckdb on the
+    # developer machine cannot turn the "index" check green.
+    monkeypatch.setenv("SECQA_DUCKDB_PATH", str(tmp_path / "index.duckdb"))
     result = invoke("-q", "doctor", "--offline", "--json")
     payload = _json(result)
     assert payload["failed"] == 0
