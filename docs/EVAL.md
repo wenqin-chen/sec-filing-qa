@@ -158,8 +158,13 @@ results/<config>/<run_id>/
 ```
 
 `run_id` = `<git sha7>_<UTC timestamp>`. `secqa report results/ --out RESULTS.md` renders the
-retrieval table, the QA table, a provenance table (run id, git SHA, index SHA, judge model /
-version, prices as-of, cassette directory) and the excluded-by-design footnote. Table shape
+retrieval table, the QA table, a judge-agreement table (judge-swap kappa from
+`judge_swap_<provider>_<model>.json` and human kappa from `human_agreement.json`, each with its
+`n`, `pending` until computed), the breakdown by `question_type`, the failure taxonomy with the
+judge / numeric side-by-side (match rate, coverage, disagreement count), the latency split
+(p50 / p95, retrieval vs LLM, tool calls, judge cost), a provenance table (run id, git SHA,
+index SHA, judge model / version, prices as-of, cassette directory) and the excluded-by-design
+footnote. Table shape
 comes from `configs/*.yaml`, so a config that has never run is a `pending (not run)` row with its
 reason (`requires OPENAI_API_KEY and the FinanceBench index`, ...), never an omission.
 

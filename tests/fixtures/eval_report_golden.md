@@ -29,6 +29,34 @@ Every number below comes from a committed `summary.json`; pending rows have not 
 † provisional: judge-vs-human agreement (Cohen's kappa) is missing or below 0.6 for this run; see `human_agreement.json`.
 Hallucination = incorrect / (correct + incorrect). Faithfulness = supported claims / claims, judged against cited passages only. `n/a` = not defined for the mode.
 
+## Judge agreement
+
+| Config | Judge | Swap judge | Swap n | Swap kappa | Swap agreement | Human n | Human kappa | Human agreement |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `closed_book_claude` | `anthropic:claude-sonnet-5` | pending | pending | pending | pending | pending | pending | pending |
+| `closed_book_gpt` | `anthropic:claude-sonnet-5` | pending | pending | pending | pending | pending | pending | pending |
+| `oracle_claude` | `anthropic:claude-sonnet-5` | pending | pending | pending | pending | pending | pending | pending |
+| `oracle_gpt` | `anthropic:claude-sonnet-5` | pending | pending | pending | pending | pending | pending | pending |
+| `rag_hybrid_claude` | `anthropic:claude-sonnet-5` | pending | pending | pending | pending | pending | pending | pending |
+| `rag_hybrid_docfilter_claude` | `anthropic:claude-sonnet-5` | pending | pending | pending | pending | pending | pending | pending |
+| `rag_hybrid_gpt` | `anthropic:claude-sonnet-5` | pending | pending | pending | pending | pending | pending | pending |
+| `agent_hybrid_claude` | `anthropic:claude-sonnet-5` | pending | pending | pending | pending | pending | pending | pending |
+| `agent_hybrid_gpt` | `anthropic:claude-sonnet-5` | pending | pending | pending | pending | pending | pending | pending |
+
+Cohen's kappa between the row's effective labels (judge, numeric override included) and a second judge (`judge_swap_<provider>_<model>.json`, written by `secqa.eval.judge.judge_swap`) or the human-labelled subset (`human_agreement.json`, written by `secqa.eval.judge.human_agreement`); agreement = raw label agreement. `pending` = not yet computed for this row.
+
+## Breakdown by question type
+
+_No completed runs._
+
+## Failure taxonomy and judge/numeric agreement
+
+_No completed answering runs._
+
+## Latency and tool use
+
+_No completed answering runs._
+
 ## Provenance
 
 _No completed runs._
