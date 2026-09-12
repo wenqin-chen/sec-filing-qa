@@ -43,6 +43,8 @@ from secqa.xbrl import ALLOWED_TABLES, MAX_ROWS, guard_sql, validate_sql
         ("SELECT * FROM sqlite_scan('x.db', 't')", "sqlite_scan"),
         ("SELECT * FROM pragma_database_list()", "pragma_database_list"),
         ("SELECT * FROM duckdb_settings()", "duckdb_settings"),
+        ("SELECT current_setting('home_directory') FROM documents", "current_setting"),
+        ("SELECT * FROM xbrl_facts WHERE tag = current_setting('x')", "current_setting"),
         ("SELECT * FROM range(10)", "table functions are not allowed"),
         ("SELECT * FROM '/tmp/x.parquet'", "not allowed"),
         ("SELECT * FROM chunks", "table 'chunks' is not allowed"),

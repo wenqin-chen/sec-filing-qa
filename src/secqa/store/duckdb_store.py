@@ -18,6 +18,15 @@ Design notes (SPEC 4.2):
   read-write and read-only in one process, and ``enable_external_access`` is a global setting,
   so this per-statement transaction is the strongest per-connection guarantee available; the
   XBRL module adds a sqlglot allowlist (tables, no table functions) on top.
+* The engine configuration is hardened once per store, right after ``fts`` is loaded
+  (:meth:`DuckDBStore._harden_configuration`): extension auto-install / auto-load are off on
+  every store, so a query naming a function of an extension that is not loaded is a catalog
+  error rather than a download from ``extensions.duckdb.org`` plus a native library loaded into
+  the process. Read-only (serving) stores additionally disable ``enable_external_access`` (no
+  file-system or network access from SQL at all; ``secqa export`` opts back in with
+  ``external_access=True`` for ``COPY TO``) and lock the configuration so no later ``SET`` can
+  undo any of it. Writable stores are not locked: DuckDB's ``create_fts_index`` macro sets a
+  session option internally and fails under ``lock_configuration``.
 
 A DuckDB connection is not thread-safe (two threads interleaving ``execute`` and ``fetch`` on
 one connection read each other's result sets), so :attr:`DuckDBStore.conn` is per thread: the
@@ -65,6 +74,14 @@ _CHUNK_COLUMNS = "chunk_id, doc_name, page_num, chunk_idx, section, text, n_toke
 _DOCUMENT_COLUMNS = (
     "doc_name, ticker, cik, company, form, fiscal_year, period_end, source_kind, "
     "source_url, source_sha256, n_pages, ingested_at"
+)
+
+# Engine options pinned on every store; read-only stores also disable ``enable_external_access``
+# (unless opened with ``external_access=True``) and lock the configuration.
+# See :meth:`DuckDBStore._harden_configuration`.
+_HARDENED_SETTINGS: tuple[tuple[str, bool], ...] = (
+    ("autoinstall_known_extensions", False),
+    ("autoload_known_extensions", False),
 )
 
 # Leading keywords that DuckDB's parser classifies as SELECT but which are not plain reads.
@@ -273,6 +290,7 @@ class DuckDBStore:
         path: Path | str = _MEMORY,
         embed_dim: int | None = None,
         read_only: bool = False,
+        external_access: bool | None = None,
     ):
         """Open (or create) the store.
 
@@ -283,9 +301,14 @@ class DuckDBStore:
                 :meth:`init_schema` confirms it.
             read_only: open the file read-only (serving / tools). Requires an existing,
                 initialised file.
+            external_access: whether SQL on this store may reach the file system and the
+                network (``COPY TO``, ``read_csv``, ``INSTALL`` ...). Defaults to
+                ``not read_only``: ingest needs it, serving must not have it. ``secqa export``
+                opens read-only with ``external_access=True`` because ``COPY TO`` writes files.
         """
         self.path: str = _MEMORY if str(path) == _MEMORY else str(Path(path))
         self.read_only = read_only
+        self.external_access: bool = (not read_only) if external_access is None else external_access
         if embed_dim is not None and embed_dim <= 0:
             raise ValueError(f"embed_dim must be positive, got {embed_dim}")
         if self.path == _MEMORY:
@@ -304,6 +327,13 @@ class DuckDBStore:
         self._cursors: list[duckdb.DuckDBPyConnection] = []
         self._cursors_lock = threading.Lock()
         self._fts_loaded = self._load_fts_extension()
+        try:
+            self._harden_configuration()
+        except duckdb.Error as exc:
+            self.close()
+            raise ConfigError(
+                f"could not harden the DuckDB configuration of {self.path}: {exc}"
+            ) from exc
         self._fts_stale = False
         self._py_bm25: _PythonBM25 | None = None
         self._dim: int | None = None
@@ -821,7 +851,9 @@ class DuckDBStore:
         """A guarded cursor for the SQL tool (see :class:`ReadOnlyConnection`).
 
         Each call returns a fresh cursor, so one per thread is safe. When the store itself was
-        opened ``read_only`` the file is additionally protected by the engine's access mode.
+        opened ``read_only`` the file is additionally protected by the engine's access mode, and
+        the cursor inherits the locked engine configuration (no extension auto-loading; no
+        external access on read-only stores), so a statement cannot widen what it may reach.
         """
         cursor = self.conn.cursor()
         if self._fts_loaded:
@@ -891,6 +923,45 @@ class DuckDBStore:
                 fallback="python BM25 (no stemming)",
             )
             return False
+
+    def _harden_configuration(self) -> None:
+        """Pin the engine configuration so model-driven SQL cannot widen it; runs once per store.
+
+        Must run after :meth:`_load_fts_extension`: ``INSTALL fts`` / ``LOAD fts`` need external
+        access. Every option is global to the database instance, so per-thread cursors and
+        :class:`ReadOnlyConnection` inherit it. Read-only stores are then locked; writable ones
+        are not because ``PRAGMA create_fts_index`` sets a session option internally and fails
+        under ``lock_configuration`` (and ingest never runs model-driven SQL). When the instance
+        is already locked (a second read-only store on the same file in one process) the values
+        are verified instead of set, and a disagreement is a :class:`ConfigError` because the
+        hardening cannot be guaranteed.
+        """
+        conn = self.conn
+        wanted = dict(_HARDENED_SETTINGS)
+        wanted["enable_external_access"] = self.external_access
+        locked = self._current_setting("lock_configuration")
+        for name, value in wanted.items():
+            current = self._current_setting(name)
+            if current == value:
+                continue
+            if locked:
+                raise ConfigError(
+                    f"DuckDB configuration of {self.path} is locked with {name}={current!r}; "
+                    f"expected {value!r}"
+                )
+            conn.execute(f"SET {name} = {'true' if value else 'false'}")
+        if self.read_only and not locked:
+            conn.execute("SET lock_configuration = true")
+        log.debug("duckdb_configuration_hardened", locked=self.read_only or locked, **wanted)
+
+    def _current_setting(self, name: str) -> bool:
+        row = self.conn.execute("SELECT current_setting(?)", [name]).fetchone()
+        if row is None:  # pragma: no cover - current_setting always yields one row
+            raise ConfigError(f"DuckDB did not report the value of {name}")
+        value = row[0]
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() == "true"
 
     def _ensure_fts_index(self) -> None:
         if self._fts_stale or not self._fts_index_exists():

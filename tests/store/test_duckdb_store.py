@@ -461,6 +461,90 @@ def test_readonly_connection_engine_level_guard(
         raw.execute("ROLLBACK")
 
 
+def test_extension_autoload_is_off_on_every_store(populated_store: DuckDBStore) -> None:
+    """Extension auto-install / auto-load are off even on writable stores.
+
+    The sqlglot guard denies functions by name, so a scalar call to a function of an extension
+    that is not loaded reached DuckDB's binder, which auto-installed the extension from
+    extensions.duckdb.org (network egress, ~60 MB on disk and in RAM) before failing. Now the
+    binder answers with a catalog error and nothing is installed or loaded.
+    """
+    assert populated_store.external_access is True
+    raw = populated_store.readonly_connection()._cursor
+    settings = dict(
+        raw.execute(
+            "SELECT name, value FROM duckdb_settings() WHERE name IN "
+            "('autoinstall_known_extensions', 'autoload_known_extensions', "
+            "'enable_external_access', 'lock_configuration')"
+        ).fetchall()
+    )
+    assert settings == {
+        "autoinstall_known_extensions": "false",
+        "autoload_known_extensions": "false",
+        "enable_external_access": "true",  # ingest registers frames and export_parquet COPYs
+        "lock_configuration": "false",  # create_fts_index needs SET; see _harden_configuration
+    }
+    with pytest.raises(duckdb.CatalogException, match="spatial extension"):
+        raw.execute("SELECT st_point(1, 2)")
+    assert raw.execute(
+        "SELECT count(*) FROM duckdb_functions() WHERE function_name = 'st_point'"
+    ).fetchone() == (0,)
+    assert raw.execute(
+        "SELECT count(*) FROM duckdb_extensions() WHERE extension_name = 'spatial' AND loaded"
+    ).fetchone() == (0,)
+    # fts was loaded before the lock and keeps working.
+    assert raw.execute("SELECT stem('running', 'porter')").fetchone() == ("run",)
+
+
+def test_read_only_store_is_sandboxed_and_locked(
+    tmp_duckdb_path: Path,
+    tmp_path: Path,
+    corpus: tuple[list[Chunk], dict[str, str]],
+    embedder: HashingEmbedder,
+) -> None:
+    """The serving store (read_only=True) cannot reach the file system or the network from SQL,
+    and no ``SET`` on any cursor can give that back."""
+    chunks, seeded = corpus
+    with DuckDBStore(tmp_duckdb_path, embed_dim=DIM) as store:
+        store.init_schema(embedder.name, DIM)
+        store.add_chunks(chunks[:60], embed_corpus(chunks, embedder, seeded)[:60])
+        store.rebuild_fts()
+    with DuckDBStore(tmp_duckdb_path, read_only=True) as ro_store:
+        assert ro_store.external_access is False
+        raw = ro_store.readonly_connection()._cursor
+        assert raw.execute("SELECT current_setting('enable_external_access')").fetchone() == (
+            False,
+        )
+        assert raw.execute("SELECT current_setting('lock_configuration')").fetchone() == (True,)
+        with pytest.raises(duckdb.PermissionException, match="disabled by configuration"):
+            raw.execute("SELECT * FROM read_csv('/etc/hosts')")
+        with pytest.raises(duckdb.PermissionException, match="disabled by configuration"):
+            ro_store.export_parquet(tmp_path / "parquet")
+        for statement in (
+            "SET enable_external_access = true",
+            "SET autoload_known_extensions = true",
+            "SET autoinstall_known_extensions = true",
+            "SET lock_configuration = false",
+        ):
+            with pytest.raises(duckdb.InvalidInputException, match="locked"):
+                raw.execute(statement)
+        with pytest.raises(duckdb.CatalogException, match="spatial extension"):
+            raw.execute("SELECT st_point(1, 2)")
+        # Reads, per-thread cursors and the persisted FTS index are unaffected.
+        assert ro_store.readonly_connection().execute("SELECT count(*) FROM chunks").fetchone() == (
+            60,
+        )
+        assert ro_store.search_bm25(EXACT_PHRASE, k=1)[0].chunk.chunk_id == seeded["exact"]
+    # `secqa export` opts back in to the file system explicitly; auto-load stays off and locked.
+    with DuckDBStore(tmp_duckdb_path, read_only=True, external_access=True) as export_store:
+        export_store.export_parquet(tmp_path / "parquet")
+        raw = export_store.readonly_connection()._cursor
+        assert raw.execute("SELECT current_setting('lock_configuration')").fetchone() == (True,)
+        with pytest.raises(duckdb.CatalogException, match="spatial extension"):
+            raw.execute("SELECT st_point(1, 2)")
+    assert (tmp_path / "parquet" / "chunks.parquet").is_file()
+
+
 def test_readonly_result_fetch_helpers(populated_store: DuckDBStore) -> None:
     conn = populated_store.readonly_connection()
     result = conn.execute("SELECT page_num FROM pages WHERE doc_name = 'ACME_2022_10K' ORDER BY 1")

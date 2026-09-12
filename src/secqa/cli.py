@@ -160,15 +160,19 @@ def resolve_settings(**overrides: Any) -> Settings:
 
 
 @contextmanager
-def readonly_store(settings: Settings) -> Iterator[DuckDBStore]:
-    """Open ``settings.duckdb_path`` read-only, with a hint when it is missing."""
+def readonly_store(settings: Settings, *, external_access: bool = False) -> Iterator[DuckDBStore]:
+    """Open ``settings.duckdb_path`` read-only, with a hint when it is missing.
+
+    ``external_access`` is only for ``export``: ``COPY TO`` needs the file system, which the
+    read-only store otherwise disables.
+    """
     path = Path(settings.duckdb_path)
     if not path.is_file():
         raise ConfigError(
             f"index not found at {path}; build it with `secqa ingest financebench` "
             "or download one with `secqa index fetch`"
         )
-    store = DuckDBStore(path, read_only=True)
+    store = DuckDBStore(path, read_only=True, external_access=external_access)
     try:
         yield store
     finally:
@@ -1298,7 +1302,7 @@ def export(
 ) -> None:
     """Export every index table to Parquet (DuckDB-independent portability)."""
     settings = resolve_settings(duckdb_path=db)
-    with readonly_store(settings) as store:
+    with readonly_store(settings, external_access=True) as store:
         store.export_parquet(output)
     files = sorted(path.name for path in output.glob("*.parquet"))
     print_kv("Exported", [("directory", output), ("files", ", ".join(files))])

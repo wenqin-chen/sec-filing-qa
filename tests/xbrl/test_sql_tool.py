@@ -6,6 +6,7 @@ import time
 from datetime import date, datetime
 from decimal import Decimal
 
+import duckdb
 import pytest
 
 from secqa.core.contracts import SqlResult
@@ -42,6 +43,28 @@ def test_query_over_curated_view(loaded_store: DuckDBStore) -> None:
     assert [row[0] for row in result.rows] == [2021, 2022, 2023]
     assert result.rows[-1][1] == 1_577_000_000.0
     assert result.rows[-1][2] == pytest.approx(250 / 1577)
+
+
+def test_unloaded_extension_function_is_a_catalog_error_not_a_download(
+    loaded_store: DuckDBStore,
+) -> None:
+    """A scalar call the guard does not know by name must not make DuckDB fetch an extension.
+
+    ``st_point`` lives in the ``spatial`` extension, which is never installed here. With DuckDB's
+    defaults the binder would auto-install it from extensions.duckdb.org (network egress from
+    the API pod, ~60 MB, multi-second stall) before reporting the error; the store locks
+    auto-install / auto-load off, so the failure is an immediate catalog error.
+    """
+    with pytest.raises(SqlExecutionError, match="spatial extension") as info:
+        run_readonly_sql(loaded_store, "SELECT st_point(1, 2) AS p FROM xbrl_facts")
+    assert isinstance(info.value.__cause__, duckdb.CatalogException)
+    raw = loaded_store.readonly_connection()._cursor
+    assert raw.execute(
+        "SELECT count(*) FROM duckdb_extensions() WHERE extension_name = 'spatial' AND loaded"
+    ).fetchone() == (0,)
+    assert raw.execute("SELECT current_setting('autoinstall_known_extensions')").fetchone() == (
+        False,
+    )
 
 
 def test_truncated_flag_is_exact(loaded_store: DuckDBStore) -> None:

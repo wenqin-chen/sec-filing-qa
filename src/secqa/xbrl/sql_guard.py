@@ -15,7 +15,11 @@ Rules (each has a test in ``tests/xbrl/test_sql_guard.py``):
    in the query. CTE aliases may not shadow a store table (otherwise ``WITH chunks AS (SELECT *
    FROM chunks)`` would read the base table).
 3. No table functions (``read_csv``, ``glob``, ``range`` ...) and no file / system functions
-   anywhere in the tree (``read_text``, ``sqlite_scan``, ``pragma_*`` ...).
+   anywhere in the tree (``read_text``, ``sqlite_scan``, ``pragma_*``, ``current_setting`` ...).
+   This is a denylist by name, so the engine is hardened as well: the store locks DuckDB's
+   configuration with extension auto-install / auto-load off (and external access off when
+   serving), so a scalar call to a function of an extension that is not loaded is a catalog
+   error, not a download from ``extensions.duckdb.org``.
 4. No bind parameters (``?``, ``$1``) - values are inlined by the model.
 5. ``LIMIT`` is forced: absent, non-literal, percentage or above ``MAX_ROWS`` -> ``LIMIT 200``.
 
@@ -63,6 +67,7 @@ _DENIED_FUNCTIONS = frozenset(
         "checkpoint",
         "force_checkpoint",
         "getenv",
+        "current_setting",  # reveals server paths (home_directory, extension_directory ...)
         "shell",
         "load_extension",
         "from_substrait",
