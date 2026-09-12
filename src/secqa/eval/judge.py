@@ -11,7 +11,10 @@ Design (SPEC section 7):
   verdict carries only ``sha256:<digest>`` of it (:func:`redact_rationale`); the verbatim reply
   lives in the run's cassette, never in ``predictions.jsonl`` (CONTRACTS rule 5).
   :func:`judge_faithfulness` sees the prediction and its cited passages *only* (gold hidden),
-  extracts atomic claims and counts the supported ones.
+  extracts atomic claims and counts the supported ones. A cited passage is the verified quote
+  followed by the *whole* cited chunk read from the index (:func:`cited_passages`), not the
+  <=300-character display snippet the verifier attaches to a citation: a claim backed by the
+  tail of a chunk must count as supported.
 * :class:`RuleJudge` (``judge: rule`` in a config) is the key-free judge for CI and mock rows:
   abstention detection plus :func:`~secqa.eval.metrics.numeric_match`; a free-text answer it
   cannot decide is left unscored (``None``), never guessed.
@@ -33,7 +36,7 @@ from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
 from functools import cache
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from secqa.core.contracts import (
     Answer,
@@ -56,10 +59,18 @@ from secqa.rag import ABSTAIN_TEXT
 from secqa.rag.prompts import JUDGE_CORRECTNESS_SYSTEM, JUDGE_FAITHFULNESS_SYSTEM
 from secqa.rag.prompts import PROMPTS_DIR as _RAG_PROMPTS_DIR
 
+if TYPE_CHECKING:
+    from secqa.store import DuckDBStore
+
 log = get_logger(__name__)
 
-JUDGE_VERSION = "v1"
-"""Bumped whenever a judge prompt or schema changes; recorded on every verdict."""
+JUDGE_VERSION = "v2"
+"""Bumped whenever a judge prompt, schema or rendered input changes; recorded on every verdict.
+
+* ``v1``: the faithfulness judge saw the verified quote plus the <=300-char citation snippet.
+* ``v2``: it sees the verified quote plus the whole cited chunk from the index
+  (:func:`cited_passages`, capped at :data:`PASSAGE_MAX_CHARS`).
+"""
 
 PROMPTS_DIR = _RAG_PROMPTS_DIR
 """``src/secqa/prompts/``: the one prompt directory (CONTRACTS rule 11); the judge prompts are
@@ -74,7 +85,13 @@ CORRECTNESS_MAX_TOKENS = 512
 FAITHFULNESS_MAX_TOKENS = 1024
 PROVISIONAL_KAPPA = 0.6
 LABELS: tuple[str, ...] = ("correct", "incorrect", "abstain")
-PASSAGE_MAX_CHARS = 2000
+PASSAGE_MAX_CHARS = 4000
+"""Cap on the store text of one cited passage shown to the faithfulness judge.
+
+Chunks are at most 512 tokens (``secqa.ingest.chunk_pages``), which is well under 4,000
+characters even for number-dense table text, so a whole chunk fits; the cap only bounds the
+prompt against an oversized index row.
+"""
 RATIONALE_DIGEST_PREFIX = "sha256:"
 """Prefix of a persisted LLM-judge rationale: the digest of the text, never the text."""
 
@@ -164,12 +181,30 @@ def build_correctness_prompt(q: FBQuestion, pred: Answer) -> str:
     )
 
 
-def cited_passages(citations: Sequence[Citation]) -> list[str]:
-    """Store-sourced text the faithfulness judge may see: quote and snippet of each valid citation.
+def _chunk_texts(citations: Sequence[Citation], store: DuckDBStore) -> dict[str, str]:
+    """``{chunk_id: whitespace-collapsed text}`` of the valid chunk citations found in ``store``."""
+    wanted = [c.chunk_id for c in citations if c.valid and c.kind == "chunk" and c.chunk_id]
+    if not wanted:
+        return {}
+    return {chunk.chunk_id: " ".join(chunk.text.split()) for chunk in store.get_chunks(wanted)}
 
-    The ``snippet`` is always store text (CONTRACTS rule 2) and the ``quote`` is included only
-    when the verifier confirmed it, so the judge never sees a fabricated passage.
+
+def cited_passages(citations: Sequence[Citation], store: DuckDBStore | None = None) -> list[str]:
+    """Store-sourced text the faithfulness judge may see, one entry per valid citation.
+
+    Each passage is the model's ``quote`` (only when the verifier confirmed it) followed by the
+    store text of the citation, so the judge never sees a fabricated passage:
+
+    * a chunk citation renders the **whole cited chunk** read from ``store`` (whitespace
+      collapsed, capped at :data:`PASSAGE_MAX_CHARS`). The ``snippet`` a citation carries is a
+      <=300-character display prefix and is used only when no ``store`` is given or the chunk
+      is no longer in the index (logged as ``cited_chunk_missing``);
+    * an XBRL citation renders its ``snippet``, which is the verifier's rendering of the whole
+      fact row (tag, period, value, unit, accession number).
+
+    Invalid citations (refs that resolved to nothing) contribute no passage.
     """
+    chunk_texts = _chunk_texts(citations, store) if store is not None else {}
     passages: list[str] = []
     for citation in citations:
         if not citation.valid:
@@ -177,21 +212,30 @@ def cited_passages(citations: Sequence[Citation]) -> list[str]:
         parts: list[str] = []
         if citation.verified and citation.quote.strip():
             parts.append(citation.quote.strip())
-        if citation.snippet.strip():
-            parts.append(citation.snippet.strip())
+        store_text = ""
+        if citation.kind == "chunk" and citation.chunk_id:
+            store_text = chunk_texts.get(citation.chunk_id, "")
+            if store is not None and not store_text:
+                log.warning("cited_chunk_missing", ref=citation.ref, chunk_id=citation.chunk_id)
+        if not store_text:
+            store_text = " ".join(citation.snippet.split())
+        if store_text:
+            parts.append(store_text[:PASSAGE_MAX_CHARS])
         if not parts:
             continue
         label = citation.ref
         if citation.doc_name and citation.page_num is not None:
             label += f" {citation.doc_name} p.{citation.page_num}"
-        text = " ... ".join(dict.fromkeys(parts))
-        passages.append(f"({label}) {text[:PASSAGE_MAX_CHARS]}")
+        passages.append(f"({label}) {' ... '.join(dict.fromkeys(parts))}")
     return passages
 
 
-def build_faithfulness_prompt(pred: Answer) -> str:
-    """User message of the faithfulness judge: the answer and its cited passages (no gold)."""
-    passages = cited_passages(pred.citations)
+def build_faithfulness_prompt(pred: Answer, store: DuckDBStore | None = None) -> str:
+    """User message of the faithfulness judge: the answer and its cited passages (no gold).
+
+    ``store`` lets :func:`cited_passages` show whole chunks instead of display snippets.
+    """
+    passages = cited_passages(pred.citations, store)
     rendered = "\n".join(f"[{i}] {text}" for i, text in enumerate(passages, start=1))
     if not rendered:
         rendered = "(no valid cited passages)"
@@ -304,17 +348,23 @@ def judge_correctness(q: FBQuestion, pred: Answer, judge: LLMProvider) -> JudgeV
     return verdict
 
 
-def judge_faithfulness(pred: Answer, judge: LLMProvider) -> FaithVerdict:
+def judge_faithfulness(
+    pred: Answer, judge: LLMProvider, store: DuckDBStore | None = None
+) -> FaithVerdict:
     """Claim-level faithfulness against the cited passages only (gold hidden).
 
-    ``score`` is ``supported / claims`` and ``None`` when the judge found no factual claim.
+    ``store`` is the index the answer cited into: with it the judge reads each whole cited
+    chunk (see :func:`cited_passages`); without it only the <=300-char snippets are shown, which
+    under-counts claims supported by the rest of a chunk. The eval runner always passes its
+    store. ``score`` is ``supported / claims`` and ``None`` when the judge found no factual
+    claim.
 
     Raises:
         JudgeParseError: when the reply carries no valid claims list.
         ProviderError: propagated from the provider.
     """
     response = judge.complete(
-        [Message(role="user", content=build_faithfulness_prompt(pred))],
+        [Message(role="user", content=build_faithfulness_prompt(pred, store))],
         system=load_judge_prompt(JUDGE_FAITHFULNESS),
         json_schema=FAITH_SCHEMA,
         max_tokens=FAITHFULNESS_MAX_TOKENS,
@@ -379,7 +429,7 @@ class RuleJudge:
             usage=Usage(),
         )
 
-    def faithfulness(self, pred: Answer) -> FaithVerdict | None:
+    def faithfulness(self, pred: Answer, store: DuckDBStore | None = None) -> FaithVerdict | None:
         """The rule judge cannot read claims; faithfulness stays unscored."""
         return None
 
@@ -396,11 +446,14 @@ class LLMJudge:
         """See :func:`judge_correctness` (errors propagate to the runner)."""
         return judge_correctness(q, pred, self.provider)
 
-    def faithfulness(self, pred: Answer) -> FaithVerdict | None:
-        """Faithfulness only for answered predictions with at least one valid citation."""
+    def faithfulness(self, pred: Answer, store: DuckDBStore | None = None) -> FaithVerdict | None:
+        """Faithfulness only for answered predictions with at least one valid citation.
+
+        ``store`` is the index the prediction cited into (see :func:`judge_faithfulness`).
+        """
         if pred.abstained or not cited_passages(pred.citations):
             return None
-        return judge_faithfulness(pred, self.provider)
+        return judge_faithfulness(pred, self.provider, store)
 
 
 Judge = RuleJudge | LLMJudge

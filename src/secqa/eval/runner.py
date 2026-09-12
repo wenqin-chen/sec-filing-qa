@@ -372,7 +372,7 @@ class _Harness:
                     "judge_failed", financebench_id=q.id, call="correctness", error=str(exc)
                 )
             try:
-                faith = self.judge.faithfulness(answer)
+                faith = self.judge.faithfulness(answer, store=self.store)
             except (JudgeParseError, ProviderError) as exc:
                 judge_failures.append(f"judge faithfulness: {exc}")
                 log.warning(

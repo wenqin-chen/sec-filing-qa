@@ -6,15 +6,17 @@ import json
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pytest
 
-from secqa.core.contracts import Answer, FBQuestion, Usage
+from secqa.core.contracts import Answer, Chunk, FBQuestion, Usage
 from secqa.core.errors import ConfigError
 from secqa.core.ids import sha256_hex
 from secqa.eval.judge import (
     JUDGE_PROMPT_NAMES,
     JUDGE_SCHEMA,
     JUDGE_VERSION,
+    PASSAGE_MAX_CHARS,
     PROMPTS_DIR,
     JudgeParseError,
     LLMJudge,
@@ -34,9 +36,13 @@ from secqa.eval.judge import (
     parse_correctness,
     read_human_labels,
 )
+from secqa.grounding.verifier import SNIPPET_MAX_CHARS
 from secqa.rag.prompts import prompt_hashes
+from secqa.store import DuckDBStore
 from tests.eval.conftest import (
+    DIM,
     FIXTURES,
+    TOP_DOC,
     VERDICTS_DIR,
     FixedProvider,
     make_record,
@@ -122,6 +128,76 @@ def test_prompt_builders_hide_gold_from_faithfulness() -> None:
     invalid = verified_citation().model_copy(update={"valid": False})
     assert cited_passages([invalid]) == []
     assert "(no valid cited passages)" in build_faithfulness_prompt(_answer(citations=[]))
+
+
+def _store_with_chunk(text: str) -> DuckDBStore:
+    """An in-memory index holding one chunk with the citation id ``verified_citation`` uses."""
+    db = DuckDBStore(":memory:", embed_dim=DIM)
+    db.init_schema("hashing", DIM)
+    chunk = Chunk(
+        chunk_id="a" * 40,
+        doc_name=TOP_DOC,
+        page_num=1,
+        chunk_idx=0,
+        section=None,
+        text=text,
+        n_tokens=len(text.split()),
+    )
+    db.add_chunks([chunk], np.zeros((1, DIM), dtype=np.float32))
+    return db
+
+
+def test_faithfulness_judge_sees_the_whole_cited_chunk_not_the_display_snippet() -> None:
+    """The verifier's ``snippet`` is a <=300-char display prefix. The faithfulness judge must see
+    the whole cited chunk from the index, or a claim supported by the tail of the chunk (and not
+    quoted verbatim) is scored unsupported and the metric degrades to 'quoted verbatim'."""
+    head = "Total net sales were $1,577 million in fiscal 2023, an increase of 12% over 2022. "
+    tail = "Operating income was $245 million, down from $260 million in the prior year."
+    filler = "Segment results are discussed below.\n" * 12  # pushes the tail past 300 chars
+    chunk_text = head + filler + tail
+    citation = verified_citation()
+    assert " ".join(chunk_text.split()).startswith(citation.snippet)  # snippet = chunk prefix
+    assert tail not in citation.snippet and len(citation.snippet) <= SNIPPET_MAX_CHARS
+    answer = _answer(text="Operating income was $245 million.", citations=[citation])
+
+    with _store_with_chunk(chunk_text) as store:
+        (passage,) = cited_passages(answer.citations, store)
+        assert passage.startswith(f"({citation.ref} {TOP_DOC} p.1) {citation.quote} ... ")
+        assert tail in passage and "\n" not in passage  # whole chunk, whitespace collapsed
+        provider = FixedProvider(text='{"claims": [{"claim": "x", "supported": true}]}')
+        judge = LLMJudge(provider)
+        assert judge.faithfulness(answer, store=store) is not None
+        assert tail in provider.calls[0]["messages"][0].content
+        assert build_faithfulness_prompt(answer, store) == provider.calls[0]["messages"][0].content
+
+    # Without a store (or when the chunk left the index) only the display snippet is available.
+    (fallback,) = cited_passages(answer.citations)
+    assert citation.snippet in fallback and tail not in fallback
+    with _store_with_chunk("unrelated chunk text") as other:
+        missing = verified_citation().model_copy(update={"chunk_id": "b" * 40})
+        (degraded,) = cited_passages([missing], other)
+        assert missing.snippet in degraded and "unrelated" not in degraded
+
+
+def test_cited_passages_cap_and_xbrl_rendering() -> None:
+    oversized = "word " * (PASSAGE_MAX_CHARS // 2)
+    with _store_with_chunk(oversized) as store:
+        (passage,) = cited_passages([verified_citation(False)], store)
+        body = passage.split(") ", 1)[1]
+        assert body == " ".join(oversized.split())[:PASSAGE_MAX_CHARS]
+    fact = verified_citation().model_copy(
+        update={
+            "ref": "xbrl:Revenues|FY2023|0000000000-23-000001",
+            "kind": "xbrl",
+            "chunk_id": None,
+            "doc_name": None,
+            "page_num": None,
+            "quote": "",
+            "snippet": "us-gaap:Revenues FY2023 = 1,577,000,000.0 USD (FIX 10-K accn ...)",
+        }
+    )
+    with _store_with_chunk("irrelevant") as store:
+        assert cited_passages([fact], store) == [f"({fact.ref}) {fact.snippet}"]
 
 
 # ---- recorded verdicts --------------------------------------------------------------------

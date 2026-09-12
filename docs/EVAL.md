@@ -113,7 +113,12 @@ and the class (no dataset text).
   vendors' rows keeps rows comparable; the judge's own bias is measured, not assumed away.
 - **Inputs**: correctness judge sees question, gold answer, justification and the prediction
   (text, value, unit, abstain flag). Faithfulness judge sees the prediction and its cited
-  passages only.
+  passages only. A cited passage is the model's quote (only when the verifier confirmed it)
+  followed by the **whole cited chunk** read from the index (whitespace-collapsed, capped at
+  `PASSAGE_MAX_CHARS` = 4,000 characters, enough for a 512-token chunk); an XBRL citation
+  renders its fact row (tag, period, value, unit, accession number). The <=300-character
+  `snippet` a citation carries is a display prefix and is shown to the judge only when the
+  chunk is no longer in the index (a warning is logged). Invalid citations contribute nothing.
 - **Frozen prompts**: `src/secqa/prompts/judge_correctness.md` and `judge_faithfulness.md` are
   hashed (sha256) into every record and every summary together with `JUDGE_VERSION`. They are
   never edited after seeing results; a revision is a new version and every published row is

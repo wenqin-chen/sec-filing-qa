@@ -16,7 +16,12 @@ from secqa.core.errors import ConfigError, ProviderError
 from secqa.core.ids import sha256_hex
 from secqa.embeddings import HashingEmbedder
 from secqa.eval.financebench import load_questions_jsonl
-from secqa.eval.judge import JUDGE_PROMPT_NAMES, RATIONALE_DIGEST_PREFIX, RuleJudge
+from secqa.eval.judge import (
+    JUDGE_PROMPT_NAMES,
+    JUDGE_VERSION,
+    RATIONALE_DIGEST_PREFIX,
+    RuleJudge,
+)
 from secqa.eval.metrics import read_records
 from secqa.eval.runner import (
     EvalConfig,
@@ -153,7 +158,7 @@ def test_rag_mock_end_to_end(
     assert summary.metrics["page_recall_10"] == pytest.approx(1.0)
     assert summary.metrics["faithfulness"] is None  # rule judge never scores faithfulness
     assert summary.provider == "mock" and summary.judge_model == "rule"
-    assert summary.judge_version == "v1" and summary.cost_total_usd == 0.0
+    assert summary.judge_version == JUDGE_VERSION and summary.cost_total_usd == 0.0
     assert summary.failures["none"] >= 1
 
 
@@ -417,6 +422,14 @@ def test_correctness_judge_failure_does_not_block_faithfulness(
     assert rec.numeric_match is True and rec.failure == "none"
     assert rec.judge_cost_usd > 0  # the faithfulness call was made and paid for
     assert len(judge.calls) == 2  # correctness (failed to parse) + faithfulness
+    # The harness hands its store to the judge: every cited chunk is rendered in full from the
+    # index (not the <=300-char display snippet), and the gold answer stays hidden.
+    faith_prompt = judge.calls[1]["messages"][0].content
+    cited = [c for c in rec.citations if c.valid and c.chunk_id]
+    assert cited, "the fixture answer must cite a retrieved chunk for this check to mean anything"
+    for chunk in store.get_chunks([c.chunk_id for c in cited if c.chunk_id]):
+        assert " ".join(chunk.text.split()) in faith_prompt
+    assert "Reference answer" not in faith_prompt
 
 
 def test_llm_judge_rationale_is_persisted_as_a_digest_only(
