@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -574,3 +575,68 @@ def test_corpus_fixture_is_the_expected_size(corpus: tuple[list[Chunk], dict[str
     assert set(seeded) == {"exact", "paraphrase"}
     assert make_corpus() == corpus  # deterministic
     assert datetime.now(tz=UTC).tzinfo is UTC
+
+
+# ---- thread safety ----------------------------------------------------------------------------
+
+
+def test_conn_is_per_thread_and_concurrent_reads_do_not_cross(populated_store: DuckDBStore) -> None:
+    """Eight threads read distinct documents through one store; every result matches its own
+    filter. DuckDB connections are not thread-safe, so ``conn`` must hand each thread its own
+    cursor (a shared connection returns another thread's rows a few times per thousand calls)."""
+    n_threads, iterations = 8, 150
+    conns: dict[int, list[int]] = {}
+    failures: list[str] = []
+    barrier = threading.Barrier(n_threads)
+
+    def worker(doc_name: str) -> None:
+        barrier.wait()
+        conns[threading.get_ident()] = [id(populated_store.conn), id(populated_store.conn)]
+        for _ in range(iterations):
+            try:
+                docs = [d.doc_name for d in populated_store.list_documents(doc_names=[doc_name])]
+                pages = [p.doc_name for p in populated_store.get_pages(doc_name, [1])]
+            except Exception as exc:  # noqa: BLE001 - the failure mode under test is any error
+                failures.append(f"{doc_name}: {type(exc).__name__}: {exc}")
+                return
+            if docs != [doc_name] or pages != [doc_name]:
+                failures.append(f"{doc_name}: got documents {docs} pages {pages}")
+                return
+        hits = populated_store.search_bm25("revenue income", k=5, doc_filter=[doc_name])
+        if {h.chunk.doc_name for h in hits} != {doc_name}:
+            failures.append(f"{doc_name}: bm25 hits from {[h.chunk.doc_name for h in hits]}")
+
+    threads = [
+        threading.Thread(target=worker, args=(DOCS[i % len(DOCS)],)) for i in range(n_threads)
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert failures == []
+    assert len(conns) == n_threads
+    # Each thread's connection is stable within the thread and distinct from every other one.
+    assert all(pair[0] == pair[1] for pair in conns.values())
+    assert len({pair[0] for pair in conns.values()}) == n_threads
+    assert all(pair[0] != id(populated_store.conn) for pair in conns.values())
+
+
+def test_close_releases_thread_cursors(store_factory: Callable[..., DuckDBStore]) -> None:
+    store = store_factory()
+    cursors: list[duckdb.DuckDBPyConnection] = []
+
+    def worker() -> None:
+        cursors.append(store.conn)
+        assert store.conn is cursors[-1]
+
+    thread = threading.Thread(target=worker)
+    thread.start()
+    thread.join()
+    assert len(cursors) == 1 and cursors[0] is not store.conn
+    store.close()
+    with pytest.raises(ConfigError, match="closed"):
+        store.conn.execute("SELECT 1")
+    with pytest.raises(duckdb.Error):
+        cursors[0].execute("SELECT 1")
+    store.close()

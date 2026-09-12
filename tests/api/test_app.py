@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import pytest
@@ -502,6 +503,34 @@ class TestSearch:
 
     def test_bad_strategy_422(self, client: TestClient) -> None:
         assert_problem(client.post("/v1/search", json={"query": "x", "strategy": "faiss"}), 422)
+
+    def test_concurrent_requests_keep_their_own_filters(self, client: TestClient) -> None:
+        """Sync endpoints share one DuckDB store across the threadpool; each request must see
+        only its own result set (a shared connection leaks rows between threads or trips a
+        spurious 503 when one thread consumes another's ``_fts_index_exists`` row)."""
+        n_workers, per_worker = 8, 20
+        docs = (TOP_DOC, OTHER_DOC)
+
+        def worker(index: int) -> list[str]:
+            doc_name = docs[index % len(docs)]
+            problems: list[str] = []
+            for _ in range(per_worker):
+                response = client.post(
+                    "/v1/search",
+                    json={"query": "revenue income", "doc_names": [doc_name], "k": 10},
+                )
+                if response.status_code != 200:
+                    problems.append(f"{doc_name}: {response.status_code} {response.text}")
+                    break
+                seen = {hit["doc_name"] for hit in response.json()["hits"]}
+                if seen != {doc_name}:
+                    problems.append(f"{doc_name}: hits from {sorted(seen)}")
+                    break
+            return problems
+
+        with ThreadPoolExecutor(max_workers=n_workers) as pool:
+            results = list(pool.map(worker, range(n_workers)))
+        assert [p for problems in results for p in problems] == []
 
 
 class TestFilings:

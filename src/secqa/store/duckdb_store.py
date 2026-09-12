@@ -19,14 +19,20 @@ Design notes (SPEC 4.2):
   so this per-statement transaction is the strongest per-connection guarantee available; the
   XBRL module adds a sqlglot allowlist (tables, no table functions) on top.
 
-DuckDB connections are not thread-safe: use one store per thread or hand each thread its own
-:meth:`readonly_connection`.
+A DuckDB connection is not thread-safe (two threads interleaving ``execute`` and ``fetch`` on
+one connection read each other's result sets), so :attr:`DuckDBStore.conn` is per thread: the
+thread that opened the store gets the root connection and every other thread gets its own
+cursor (an independent connection to the same database, created on first use and closed by
+:meth:`DuckDBStore.close`). One store therefore serves a whole request threadpool; in-process
+Python state (``_fts_stale``, the python BM25 fallback) is only mutated by the single-threaded
+ingest path.
 """
 
 from __future__ import annotations
 
 import math
 import re
+import threading
 import time
 from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime
@@ -293,6 +299,10 @@ class DuckDBStore:
         self._conn: duckdb.DuckDBPyConnection | None = duckdb.connect(
             self.path, read_only=read_only
         )
+        self._owner_thread = threading.get_ident()
+        self._thread_local = threading.local()
+        self._cursors: list[duckdb.DuckDBPyConnection] = []
+        self._cursors_lock = threading.Lock()
         self._fts_loaded = self._load_fts_extension()
         self._fts_stale = False
         self._py_bm25: _PythonBM25 | None = None
@@ -344,10 +354,26 @@ class DuckDBStore:
 
     @property
     def conn(self) -> duckdb.DuckDBPyConnection:
-        """The underlying connection (raises :class:`ConfigError` after :meth:`close`)."""
-        if self._conn is None:
+        """The calling thread's connection (raises :class:`ConfigError` after :meth:`close`).
+
+        The thread that opened the store gets the root connection; any other thread gets a
+        cursor of its own, created on first use and reused for that thread's lifetime. DuckDB
+        cursors are independent connections to the same database, so concurrent threads never
+        share a result set (see the module docstring).
+        """
+        root = self._conn
+        if root is None:
             raise ConfigError("store is closed")
-        return self._conn
+        if threading.get_ident() == self._owner_thread:
+            return root
+        cursor: duckdb.DuckDBPyConnection | None = getattr(self._thread_local, "cursor", None)
+        if cursor is None:
+            cursor = root.cursor()
+            self._thread_local.cursor = cursor
+            with self._cursors_lock:
+                self._cursors.append(cursor)
+            log.debug("store_thread_cursor_opened", path=self.path, thread=threading.get_ident())
+        return cursor
 
     # ---- schema / manifest ------------------------------------------------------------------
 
@@ -817,7 +843,15 @@ class DuckDBStore:
         log.info("parquet_exported", out_dir=str(out_dir), tables=list(_EXPORT_TABLES))
 
     def close(self) -> None:
-        """Close the connection; idempotent."""
+        """Close the root connection and every per-thread cursor; idempotent.
+
+        Cursors are closed first: closing the root invalidates them anyway, and releasing them
+        explicitly does not depend on their threads still being alive.
+        """
+        with self._cursors_lock:
+            cursors, self._cursors = self._cursors, []
+        for cursor in cursors:
+            cursor.close()
         if self._conn is not None:
             self._conn.close()
             self._conn = None

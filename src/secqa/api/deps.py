@@ -191,6 +191,10 @@ def load_index(state: AppState) -> None:
     (serving never writes; ingest is CLI-only), build the embedder from ``settings.embedder``
     and one retriever per strategy (each validates embedder/store compatibility). Any failure
     leaves ``state.ready`` False with the reason in ``state.not_ready_reason``.
+
+    One store serves every request: sync endpoints run on the threadpool, and
+    :attr:`DuckDBStore.conn` gives each thread its own cursor, so concurrent requests never
+    share a DuckDB result set.
     """
     settings = state.settings
     path = Path(settings.duckdb_path)
