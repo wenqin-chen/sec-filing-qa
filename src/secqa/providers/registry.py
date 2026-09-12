@@ -3,7 +3,10 @@
 Specs: ``mock`` | ``mock:abstain`` | ``mock:extractive`` | ``scripted:<path>`` |
 ``openai[:<model>]`` | ``anthropic[:<model>]``. Vendor keys come from :class:`Settings` (never
 read from ``os.environ`` here); a vendor spec without its key raises :class:`ConfigError` before
-any SDK is imported. When ``settings.cassette_mode`` is not ``off`` the provider is wrapped in a
+any SDK is imported. Vendor adapters get ``settings.provider_timeout_s`` (per HTTP attempt) and
+``settings.provider_max_retries`` - never ``settings.request_timeout_s``, which is the request
+deadline enforced separately through :mod:`secqa.providers.deadline`. When
+``settings.cassette_mode`` is not ``off`` the provider is wrapped in a
 :class:`ReplayCacheProvider` over ``settings.cassette_dir``.
 """
 
@@ -52,7 +55,8 @@ def get_provider(spec: str, settings: Settings | None = None) -> LLMProvider:
         provider = OpenAIProvider(
             model=rest or settings.openai_model,
             api_key=key.get_secret_value() if key is not None else None,
-            timeout_s=float(settings.request_timeout_s),
+            timeout_s=settings.provider_timeout_s,
+            max_retries=settings.provider_max_retries,
         )
     elif vendor == "anthropic":
         settings.validate_provider_spec(spec)
@@ -62,7 +66,8 @@ def get_provider(spec: str, settings: Settings | None = None) -> LLMProvider:
         provider = AnthropicProvider(
             model=rest or DEFAULT_MODEL,
             api_key=key.get_secret_value() if key is not None else None,
-            timeout_s=float(settings.request_timeout_s),
+            timeout_s=settings.provider_timeout_s,
+            max_retries=settings.provider_max_retries,
         )
     else:
         raise ConfigError(

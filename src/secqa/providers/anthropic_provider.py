@@ -40,7 +40,11 @@ from secqa.core.contracts import (
     Usage,
 )
 from secqa.core.errors import ConfigError, ProviderError
+from secqa.core.logging import get_logger
 from secqa.providers.base import BaseProvider, Effort
+from secqa.providers.deadline import CallBudget, call_budget, remaining_s
+
+log = get_logger("secqa.providers.anthropic")
 
 DEFAULT_MODEL = "claude-opus-5"
 DEFAULT_EFFORT: Effort = "medium"
@@ -276,9 +280,10 @@ class AnthropicProvider(BaseProvider):
             effort=effort,
             assistant_blocks=self._assistant_blocks,
         )
+        client = self._client_for(self._call_budget())
         started = time.perf_counter()
         try:
-            result = self._client.messages.create(**request)
+            result = client.messages.create(**request)
         except self._sdk.AnthropicError as exc:
             raise self._translate_error(exc) from exc
         latency_ms = (time.perf_counter() - started) * 1000.0
@@ -297,6 +302,37 @@ class AnthropicProvider(BaseProvider):
             self._assistant_blocks[call.id] = blocks
         while len(self._assistant_blocks) > _SIDE_TABLE_MAX:
             self._assistant_blocks.popitem(last=False)
+
+    def _call_budget(self) -> CallBudget:
+        """Timeout / retries for the next call, shrunk to the active request deadline.
+
+        Raises :class:`ProviderError` when the deadline already passed: starting a call that
+        cannot finish would only pay for tokens the caller can no longer use.
+        """
+        budget = call_budget(self.timeout_s, self.max_retries, remaining_s())
+        if budget.timeout_s <= 0:
+            raise ProviderError(
+                "request deadline exhausted before the Anthropic call was made",
+                retryable=True,
+                provider=self.provider,
+            )
+        return budget
+
+    def _client_for(self, budget: CallBudget) -> Any:
+        """The SDK client to call: a copy with shorter per-call options only when needed.
+
+        ``with_options`` shares the underlying HTTP connection pool, so the copy is cheap; the
+        constructed client is used unchanged when no deadline shortens the budget.
+        """
+        if budget.timeout_s == self.timeout_s and budget.max_retries == self.max_retries:
+            return self._client
+        log.debug(
+            "provider_call_budget",
+            provider=self.provider,
+            timeout_s=round(budget.timeout_s, 3),
+            max_retries=budget.max_retries,
+        )
+        return self._client.with_options(timeout=budget.timeout_s, max_retries=budget.max_retries)
 
     def _translate_error(self, exc: Exception) -> ProviderError:
         sdk = self._sdk

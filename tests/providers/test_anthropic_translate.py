@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 import pytest
@@ -13,6 +14,7 @@ from secqa.providers.anthropic_provider import (
     anthropic_to_response,
     build_anthropic_request,
 )
+from secqa.providers.deadline import deadline
 from tests.providers.conftest import ANSWER_SCHEMA, load_response
 
 anthropic = pytest.importorskip("anthropic")
@@ -304,3 +306,62 @@ def test_constructor_validation() -> None:
     with pytest.raises(ConfigError, match="model id"):
         AnthropicProvider("", api_key="sk-ant-test")
     assert AnthropicProvider(api_key="sk-ant-test").model == "claude-opus-5"
+
+
+# ---------- request deadline -> per-call timeout / retries ----------
+
+
+class _FakeClient:
+    """Stands in for the SDK client: serves ``messages``, records ``with_options``."""
+
+    def __init__(self, stub: Any) -> None:
+        self.messages = stub
+        self.options: list[dict[str, Any]] = []
+
+    def with_options(self, **kwargs: Any) -> _FakeClient:
+        self.options.append(kwargs)
+        return self
+
+
+def _deadline_provider(raw: dict[str, Any]) -> tuple[AnthropicProvider, _StubMessages, _FakeClient]:
+    provider = AnthropicProvider(api_key="sk-ant-test-not-real", timeout_s=45, max_retries=1)
+    stub = _StubMessages(raw)
+    client = _FakeClient(stub)
+    provider._client = client  # type: ignore[assignment]
+    return provider, stub, client
+
+
+def test_without_a_deadline_the_constructed_client_is_used_unchanged() -> None:
+    provider, stub, client = _deadline_provider(load_response("anthropic_text_json.json"))
+    provider.complete([Message(role="user", content="q")])
+    assert client.options == [] and len(stub.requests) == 1
+
+
+def test_deadline_shrinks_the_call_timeout_and_drops_retries_that_do_not_fit() -> None:
+    """The regression the deadline exists for: with 10 s left a 45 s x 2-attempt call must not
+    be started as such; the SDK gets one attempt of at most the remaining time."""
+    provider, stub, client = _deadline_provider(load_response("anthropic_text_json.json"))
+    with deadline(10.0):
+        provider.complete([Message(role="user", content="q")])
+    assert len(stub.requests) == 1
+    assert len(client.options) == 1
+    options = client.options[0]
+    assert options["max_retries"] == 0
+    assert 9.0 < options["timeout"] <= 10.0
+
+
+def test_deadline_with_room_for_every_attempt_uses_the_constructed_client() -> None:
+    provider, stub, client = _deadline_provider(load_response("anthropic_text_json.json"))
+    with deadline(1000.0):
+        provider.complete([Message(role="user", content="q")])
+    assert client.options == [] and len(stub.requests) == 1
+
+
+def test_exhausted_deadline_raises_before_any_request_is_sent() -> None:
+    provider, stub, _ = _deadline_provider(load_response("anthropic_text_json.json"))
+    with deadline(0.001):
+        time.sleep(0.005)
+        with pytest.raises(ProviderError, match="deadline exhausted") as info:
+            provider.complete([Message(role="user", content="q")])
+    assert info.value.retryable is True and info.value.provider == "anthropic"
+    assert stub.requests == [], "no tokens are paid for a call that cannot finish"

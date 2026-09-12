@@ -62,11 +62,40 @@ docker compose up --build                            # same, with a persistent /
 | `SECQA_DAILY_BUDGET_USD` | `5.0` | per-instance, in-memory daily cap on paid calls |
 | `SECQA_RATE_LIMIT_PER_MIN` | `10` | slowapi limit per client IP on `/v1/*` |
 | `SECQA_TRUSTED_PROXY_HOPS` | `0` | proxies that append the client to `X-Forwarded-For`; `0` keys on the socket peer, `1` behind Cloud Run / Container Apps (both workflows set it) |
-| `SECQA_REQUEST_TIMEOUT_S` | `90` | agent wall clock |
+| `SECQA_REQUEST_TIMEOUT_S` | `90` | per-request deadline: the agent wall clock, and the bound on the single LLM call of `rag` / `closed_book` (see [Request timeouts](#request-timeouts)) |
+| `SECQA_PROVIDER_TIMEOUT_S` | `45` | vendor SDK timeout per HTTP attempt; shrunk to the time left inside a request deadline |
+| `SECQA_PROVIDER_MAX_RETRIES` | `1` | vendor SDK retries on 429 / 5xx / timeouts; retries that no longer fit the deadline are dropped |
 | `SECQA_LOG_JSON` | `true` | one JSON object per log line (`request_id`, provider, model, tokens, cost, latency) |
 | `SECQA_GIT_SHA` | build arg | reported by `/version` when `.git` is absent |
 
 `.env.example` lists the same variables with comments for local use.
+
+### Request timeouts
+
+Three clocks are involved and they must be ordered: the request deadline, the vendor call, and
+the platform. `SECQA_REQUEST_TIMEOUT_S` is the deadline of one `/v1/ask`. For `rag` and
+`closed_book` the single LLM call runs under it; for `agent` it is the loop's wall clock, checked
+between steps *and* enforced in flight: every tool-enabled vendor call gets a per-attempt timeout
+of `min(SECQA_PROVIDER_TIMEOUT_S, time left)` and only the retries that still fit, so no call can
+outlive the deadline (`secqa.providers.deadline`). A deadline that passes between steps yields
+504 with the partial answer; a vendor call cut by it yields 502 (`retryable: true`). The one
+call that runs outside the deadline is the tools-off final call after a wall-clock abort: it gets
+one full provider window, `SECQA_PROVIDER_TIMEOUT_S × (SECQA_PROVIDER_MAX_RETRIES + 1)`, so an
+aborted agent run still ends with an answer or an explicit abstention.
+
+The platform request timeout must therefore satisfy
+
+```
+platform timeout >= SECQA_REQUEST_TIMEOUT_S + SECQA_PROVIDER_TIMEOUT_S × (SECQA_PROVIDER_MAX_RETRIES + 1) + headroom
+                    90                     + 45                      × 2                              + ~60  = 240 s at the defaults
+```
+
+(`Settings.worst_case_request_s()` computes the left-hand sum; `tests/ops/test_infra.py` checks
+the deployed values against it.) Cloud Run is deployed with `--timeout 240`; Azure Container Apps'
+ingress timeout is fixed at 240 s, which is why the defaults are sized to it. If the platform
+answers first, the client gets a 504 while the worker keeps running and paying for tokens, and
+the daily budget is charged only when it finishes — the situation these settings prevent. Raising
+`SECQA_REQUEST_TIMEOUT_S` or the provider window means raising `--timeout` by the same amount.
 
 ## GCP Cloud Run
 
@@ -81,7 +110,7 @@ Artifact Registry by tag, and runs
 ```
 gcloud run deploy sec-filing-qa --image <AR image>:<sha> --region us-central1 --platform managed \
   --memory 2Gi --cpu 1 --cpu-boost --min-instances 0 --max-instances 2 --concurrency 4 \
-  --timeout 120 --port 8080 --allow-unauthenticated \
+  --timeout 240 --port 8080 --allow-unauthenticated \
   --set-env-vars SECQA_PROVIDER=...,SECQA_EMBEDDER=...,SECQA_INDEX_URL=...,SECQA_GIT_SHA=<sha> \
   --set-secrets OPENAI_API_KEY=openai-api-key:latest,...        # only when CLOUD_RUN_SET_SECRETS is set
 ```
@@ -98,7 +127,8 @@ explicit message if the tag never appears — for example when the build failed,
 dispatch names an `image_tag` that was never built.
 
 Sizing: `--concurrency 4` because one process holds one DuckDB handle and agent runs are
-CPU-bound for seconds; `--max-instances 2` caps the bill; cold start of the `full` image is
+CPU-bound for seconds; `--timeout 240` covers the worst-case request derived in
+[Request timeouts](#request-timeouts); `--max-instances 2` caps the bill; cold start of the `full` image is
 10–20 s from zero (`--cpu-boost` helps; `CLOUD_RUN_MIN_INSTANCES=1` removes it at the cost of one
 always-on vCPU). The public demo runs `provider=mock` unless a key is mounted from Secret
 Manager.

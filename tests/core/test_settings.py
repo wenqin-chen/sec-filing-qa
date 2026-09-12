@@ -25,8 +25,23 @@ def test_defaults_are_offline_safe() -> None:
     assert s.max_agent_steps == 8
     assert s.max_cost_usd == 0.25
     assert s.daily_budget_usd == 5.0
+    assert s.request_timeout_s == 90
+    assert s.provider_timeout_s == 45.0
+    assert s.provider_max_retries == 1
     assert s.log_json is True
     s.validate_provider_keys()  # mock needs no key
+
+
+def test_one_vendor_call_with_retries_fits_the_request_deadline_by_default() -> None:
+    """The SDK timeout is a separate, smaller knob than the request deadline: a single call,
+    retries included, must be able to complete inside one request at the defaults."""
+    s = Settings(_env_file=None)
+    assert s.provider_timeout_s * (s.provider_max_retries + 1) <= s.request_timeout_s
+    assert s.worst_case_request_s() == 90 + 45.0 * 2
+    tight = Settings(
+        _env_file=None, request_timeout_s=60, provider_timeout_s=20, provider_max_retries=0
+    )
+    assert tight.worst_case_request_s() == 80.0
 
 
 def test_openai_provider_without_key_raises() -> None:
@@ -134,6 +149,10 @@ def test_invalid_values_rejected() -> None:
         Settings(_env_file=None, max_k=0)
     with pytest.raises(ValidationError):
         Settings(_env_file=None, provider="   ")
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, provider_timeout_s=0)
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, provider_max_retries=-1)
 
 
 def test_get_settings_is_cached(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -97,7 +97,9 @@ or `INSUFFICIENT EVIDENCE`. Providers translate the shared `Message` / `ToolSpec
 "agents" SDKs or tool-runner helpers.
 
 **Consequences.** Every stopping rule is a line of code with a test and a `terminated_by` value;
-budgets cannot be bypassed by a library default; the trace records every call with usage; the
+budgets cannot be bypassed by a library default (the wall clock is also enforced *inside* a
+vendor call: `secqa.providers.deadline` caps each HTTP attempt and its retries to the time left,
+and the vendor SDK timeout is a separate, smaller setting); the trace records every call with usage; the
 same loop runs on `mock`, `scripted` (deterministic tests, including the injection test) and
 both vendors; cassette replay works because the loop is a pure function of provider responses.
 The cost is ~600 lines that a framework would provide, and features frameworks bundle (parallel

@@ -80,7 +80,14 @@ class Settings(BaseSettings):
     max_k: int = Field(default=20, ge=1)
     max_agent_steps: int = Field(default=8, ge=1)
     max_cost_usd: float = Field(default=0.25, ge=0.0)
+    # Two different clocks. ``request_timeout_s`` is the per-request deadline: the agent wall
+    # clock, and the bound on the single LLM call of rag / closed_book. ``provider_timeout_s`` /
+    # ``provider_max_retries`` are the vendor SDK's per-attempt HTTP timeout and retry count;
+    # inside a request deadline the adapters shrink them to what is left
+    # (``secqa.providers.deadline``). See ``worst_case_request_s`` for the platform invariant.
     request_timeout_s: int = Field(default=90, ge=1)
+    provider_timeout_s: float = Field(default=45.0, gt=0.0)
+    provider_max_retries: int = Field(default=1, ge=0)
     daily_budget_usd: float = Field(default=5.0, ge=0.0)
     rate_limit_per_min: int = Field(default=10, ge=1)
     # Number of trusted proxies that APPEND the client address to X-Forwarded-For. 0 (default)
@@ -117,6 +124,16 @@ class Settings(BaseSettings):
         return value
 
     # ---- helpers used by providers / api / cli ----
+
+    def worst_case_request_s(self) -> float:
+        """Longest a ``/v1/ask`` may legally run: the request deadline plus one unbounded call.
+
+        Tool-enabled agent calls are cut at the deadline, but the tools-off final call that
+        follows a wall-clock abort runs with the provider's own timeout and retries, so the
+        platform request timeout (Cloud Run ``--timeout``, Container Apps ingress) must be at
+        least this plus headroom for retrieval, verification and retry back-off.
+        """
+        return self.request_timeout_s + self.provider_timeout_s * (self.provider_max_retries + 1)
 
     def key_for_provider(self, spec: str) -> SecretStr | None:
         """Return the vendor key a provider spec needs, or ``None`` for key-less providers."""

@@ -12,6 +12,7 @@ from secqa.providers.anthropic_provider import (
     build_anthropic_request,
 )
 from secqa.providers.base import BaseProvider, canonical_request, request_key
+from secqa.providers.deadline import CallBudget, call_budget, deadline, remaining_s
 from secqa.providers.mock_provider import MockProvider
 from secqa.providers.openai_provider import (
     OpenAIProvider,
@@ -27,6 +28,7 @@ __all__ = [
     "DEFAULT_MODELS_YAML",
     "AnthropicProvider",
     "BaseProvider",
+    "CallBudget",
     "MockProvider",
     "ModelPrice",
     "OpenAIProvider",
@@ -36,9 +38,12 @@ __all__ = [
     "anthropic_to_response",
     "build_anthropic_request",
     "build_openai_request",
+    "call_budget",
     "canonical_request",
+    "deadline",
     "get_provider",
     "openai_to_response",
     "parse_spec",
+    "remaining_s",
     "request_key",
 ]

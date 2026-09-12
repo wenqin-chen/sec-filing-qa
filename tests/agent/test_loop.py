@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from typing import Any
 
 import pytest
 
@@ -14,6 +15,7 @@ from secqa.agent.tools import FINAL_ANSWER_SCHEMA, TOOLS
 from secqa.core.contracts import Answer, RetrievalFilters
 from secqa.core.errors import ProviderError
 from secqa.core.ids import sha256_hex
+from secqa.providers.deadline import remaining_s
 from secqa.providers.mock_provider import MockProvider
 from secqa.store import DuckDBStore
 from tests.agent.conftest import (
@@ -607,3 +609,54 @@ def test_answer_is_json_serialisable_and_runtime_is_reusable(make_loop: LoopFact
     assert second.request_id != first.request_id
     assert second.tool_calls == first.tool_calls == 2
     assert [s.step for s in second.trace] == [1, 2, 3, 4, 5]
+
+
+# ---- the wall clock is enforced in flight ---------------------------------------------------
+
+
+class DeadlineRecordingScripted(RecordingScripted):
+    """Records the request deadline the vendor adapters would see at each call."""
+
+    def __init__(self, scenario: list[dict[str, Any]]) -> None:
+        super().__init__(scenario)
+        self.remaining: list[float | None] = []
+
+    def complete(self, messages, **kwargs):  # type: ignore[no-untyped-def]
+        self.remaining.append(remaining_s())
+        return super().complete(messages, **kwargs)
+
+
+def test_tool_enabled_calls_run_under_the_wall_clock_deadline(make_loop: LoopFactory) -> None:
+    """Regression: the wall clock was only checked between steps, so an in-flight vendor call
+    could block for its full SDK timeout (times retries) after the budget was gone. Every
+    tool-enabled call must now see a deadline no larger than ``wall_clock_s``."""
+    provider = DeadlineRecordingScripted(
+        [search_turn("net sales"), final_turn(citations=[net_sales_citation()])]
+    )
+    answer = make_loop(provider, wall_clock_s=30.0).run(NET_SALES_QUESTION)
+    assert answer.terminated_by == "final_answer"
+    assert len(provider.remaining) == 2
+    assert all(left is not None and 0.0 < left <= 30.0 for left in provider.remaining)
+    assert remaining_s() is None, "the deadline does not leak out of run()"
+
+
+def test_final_call_after_an_abort_runs_outside_the_deadline(make_loop: LoopFactory) -> None:
+    """The tools-off final call is what turns an abort into an answer; it gets the provider's own
+    timeout window rather than the (already spent) wall clock."""
+    provider = DeadlineRecordingScripted(
+        [search_turn("net sales"), {"match": "Stop using tools", "text": abstain_final_json()}]
+    )
+    answer = make_loop(provider, max_steps=1, wall_clock_s=30.0).run(NET_SALES_QUESTION)
+    assert answer.terminated_by == "max_steps"
+    first, final = provider.remaining
+    assert first is not None and 0.0 < first <= 30.0
+    assert final is None
+
+
+def test_wall_clock_abort_final_call_has_no_deadline(make_loop: LoopFactory) -> None:
+    provider = DeadlineRecordingScripted(
+        [{"match": "Stop using tools", "text": abstain_final_json()}]
+    )
+    answer = make_loop(provider, wall_clock_s=1e-9).run(NET_SALES_QUESTION)
+    assert answer.terminated_by == "budget"
+    assert provider.remaining == [None]

@@ -50,6 +50,7 @@ from secqa.api.schemas import (
 )
 from secqa.core.contracts import Answer, DocumentMeta, LLMProvider, SqlResult
 from secqa.core.logging import bind_context, get_logger
+from secqa.providers.deadline import deadline
 from secqa.rag import RagPipeline, answer_closed_book, prompt_hashes
 from secqa.retrieval import to_hit_view
 from secqa.store import resolve_git_sha
@@ -194,15 +195,23 @@ def ask(
 
 
 def _run(state: AppState, body: AskRequest, provider: LLMProvider, cap: float, rid: str) -> Answer:
-    """Dispatch to the pipeline for ``body.mode``; ProviderError propagates (-> 502)."""
+    """Dispatch to the pipeline for ``body.mode``; ProviderError propagates (-> 502).
+
+    ``settings.request_timeout_s`` bounds every mode. The single LLM call of ``closed_book`` and
+    ``rag`` runs under :func:`~secqa.providers.deadline.deadline` so the vendor call cannot
+    outlive it; the agent loop applies the same value as its wall clock and sets its own
+    deadline around the tool phase (the tools-off final call gets one provider timeout window).
+    """
     settings = state.settings
     if body.mode == "closed_book":
-        return answer_closed_book(body.question, provider, state.prices, request_id=rid)
+        with deadline(float(settings.request_timeout_s)):
+            return answer_closed_book(body.question, provider, state.prices, request_id=rid)
     handles = state.require_index()
     filters = body.filters()
     if body.mode == "rag":
         pipeline = RagPipeline(handles.retriever, provider, state.verifier, state.prices, k=body.k)
-        return pipeline.answer(body.question, filters=filters, request_id=rid)
+        with deadline(float(settings.request_timeout_s)):
+            return pipeline.answer(body.question, filters=filters, request_id=rid)
     runtime = ToolRuntime(
         handles.store,
         handles.retriever,

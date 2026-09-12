@@ -14,6 +14,7 @@ from secqa.api import create_app
 from secqa.api.errors import PROBLEM_MEDIA_TYPE
 from secqa.core.errors import ConfigError
 from secqa.core.settings import Settings
+from secqa.providers.deadline import remaining_s
 from tests.api.conftest import (
     NET_SALES_QUESTION,
     NET_SALES_SENTENCE,
@@ -657,3 +658,74 @@ def test_openapi_snapshot(client: TestClient) -> None:
     assert components["AskRequest"]["properties"]["k"]["maximum"] == 20
     assert components["AskRequest"]["additionalProperties"] is False
     assert client.get("/docs").status_code == 200
+
+
+# ---- request deadline ------------------------------------------------------------------------
+
+
+class DeadlineRecordingScripted(PricedScripted):
+    """Paid scripted provider recording the request deadline each call would run under."""
+
+    def __init__(self, scenario: list[dict[str, Any]]) -> None:
+        super().__init__(scenario)
+        self.remaining: list[float | None] = []
+
+    def complete(self, messages, **kwargs):  # type: ignore[no-untyped-def]
+        self.remaining.append(remaining_s())
+        return super().complete(messages, **kwargs)
+
+
+class TestRequestDeadline:
+    """``SECQA_REQUEST_TIMEOUT_S`` bounds the vendor call of every mode, in flight (the finding:
+    rag / closed_book had no deadline at all and the agent's was checked only between steps)."""
+
+    def test_rag_call_runs_under_the_request_deadline(
+        self, make_settings: SettingsFactory, make_client: ClientFactory
+    ) -> None:
+        app = create_app(make_settings(request_timeout_s=30))
+        client = make_client(app)
+        provider = DeadlineRecordingScripted([rag_answer_turn(SMALL_USAGE)])
+        install_paid_provider(app, provider)
+        response = client.post(
+            "/v1/ask", json={"question": NET_SALES_QUESTION, "provider": PAID_SPEC, "mode": "rag"}
+        )
+        assert response.status_code == 200, response.text
+        (left,) = provider.remaining
+        assert left is not None and 0.0 < left <= 30.0
+
+    def test_closed_book_call_runs_under_the_request_deadline(
+        self, make_settings: SettingsFactory, make_client: ClientFactory
+    ) -> None:
+        app = create_app(make_settings(request_timeout_s=30))
+        client = make_client(app)
+        provider = DeadlineRecordingScripted([rag_answer_turn(SMALL_USAGE)])
+        install_paid_provider(app, provider)
+        response = client.post(
+            "/v1/ask",
+            json={"question": NET_SALES_QUESTION, "provider": PAID_SPEC, "mode": "closed_book"},
+        )
+        assert response.status_code == 200, response.text
+        (left,) = provider.remaining
+        assert left is not None and 0.0 < left <= 30.0
+
+    def test_agent_tool_calls_are_bounded_and_the_final_call_is_not(
+        self, make_settings: SettingsFactory, make_client: ClientFactory
+    ) -> None:
+        app = create_app(make_settings(request_timeout_s=30, max_agent_steps=1))
+        client = make_client(app)
+        provider = DeadlineRecordingScripted(
+            [
+                {**search_turn("net sales"), "usage": SMALL_USAGE},
+                {"match": "Stop using tools", "text": abstain_json(), "usage": SMALL_USAGE},
+            ]
+        )
+        install_paid_provider(app, provider)
+        response = client.post(
+            "/v1/ask",
+            json={"question": NET_SALES_QUESTION, "provider": PAID_SPEC, "mode": "agent"},
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["terminated_by"] == "max_steps"
+        first, final = provider.remaining
+        assert first is not None and 0.0 < first <= 30.0
+        assert final is None, "the tools-off final call gets the provider's own window"

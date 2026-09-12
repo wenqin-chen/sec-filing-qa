@@ -29,6 +29,12 @@ are verified like any other, so an invented ref shows up as ``valid=False`` rath
 dropped. A text-only reply during the loop is accepted as final only if it parses into that same
 schema and its refs are known; otherwise the model is nudged once.
 
+The wall clock is also enforced *in flight*: tool-enabled calls run inside
+``secqa.providers.deadline.deadline(wall_clock_s)``, so the vendor adapters shrink each HTTP
+attempt (and drop retries) to the time left rather than blocking for their full timeout after
+the budget is gone. The tools-off final call runs outside that deadline, with the provider's own
+timeout, so an abort still produces an answer.
+
 Provider failures (:class:`~secqa.core.errors.ProviderError`) propagate, exactly as in the rag
 pipeline: the API maps them to 502 and the harness records them per question.
 """
@@ -70,6 +76,7 @@ from secqa.core.ids import request_id as make_request_id
 from secqa.core.ids import sha256_hex
 from secqa.core.logging import get_logger
 from secqa.grounding import CitationVerifier
+from secqa.providers.deadline import deadline
 from secqa.providers.pricing import PriceTable
 
 log = get_logger(__name__)
@@ -183,7 +190,8 @@ class AgentLoop:
             would exceed this.
         max_input_tokens: Abort when cumulative prompt tokens (uncached + cache read + cache
             write) exceed this.
-        wall_clock_s: Abort when the run has taken longer than this.
+        wall_clock_s: Abort when the run has taken longer than this; also the in-flight
+            deadline of every tool-enabled provider call.
         effort: Reasoning effort forwarded to providers that support it.
         max_tokens: Output token cap per LLM call.
     """
@@ -247,24 +255,29 @@ class AgentLoop:
             filters=filters.model_dump(exclude_none=True) if filters else {},
         )
 
-        while state.final is None and state.terminated_by is None:
-            reason = self._budget_exceeded(state)
-            if reason is not None:
-                self._abort(state, "max_steps" if reason == "max_steps" else "budget", reason)
-                break
-            response = self._complete(state, system, tools=True)
-            if response.stop_reason == "refusal":
-                state.terminated_by = "error"
-                state.abort_reason = "provider refused the request"
-                state.final = abstain_answer()
-                break
-            state.messages.append(
-                Message(role="assistant", content=response.text, tool_calls=response.tool_calls)
-            )
-            if response.tool_calls:
-                self._execute_step(state, response.tool_calls)
-            else:
-                self._handle_text_only(state, response)
+        # The wall clock is checked between steps AND enforced in flight: inside this block the
+        # vendor adapters cap every HTTP attempt (and drop retries) to the time left, so a
+        # tool-enabled call can never outlive ``wall_clock_s``. The tools-off final call below
+        # runs outside it, with the provider's own timeout, so an abort still yields an answer.
+        with deadline(self.wall_clock_s):
+            while state.final is None and state.terminated_by is None:
+                reason = self._budget_exceeded(state)
+                if reason is not None:
+                    self._abort(state, "max_steps" if reason == "max_steps" else "budget", reason)
+                    break
+                response = self._complete(state, system, tools=True)
+                if response.stop_reason == "refusal":
+                    state.terminated_by = "error"
+                    state.abort_reason = "provider refused the request"
+                    state.final = abstain_answer()
+                    break
+                state.messages.append(
+                    Message(role="assistant", content=response.text, tool_calls=response.tool_calls)
+                )
+                if response.tool_calls:
+                    self._execute_step(state, response.tool_calls)
+                else:
+                    self._handle_text_only(state, response)
 
         if state.needs_final_call and state.final is None:
             state.final = self._final_call(state, system)

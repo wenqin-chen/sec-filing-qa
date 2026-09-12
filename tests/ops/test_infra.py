@@ -7,7 +7,8 @@ import tomllib
 
 import yaml
 
-from tests.ops.conftest import REPO
+from secqa.core.settings import Settings
+from tests.ops.conftest import REPO, load_workflow
 
 BICEP = REPO / "infra" / "azure" / "main.bicep"
 CLOUDRUN_ENV = REPO / "infra" / "gcp" / "cloudrun.env.example"
@@ -88,6 +89,52 @@ class TestCloudRun:
         assert "gcloud secrets create" in readme
         assert "--set-secrets" in readme
         assert "DEPLOY_GCP" in readme
+
+    def test_platform_timeout_covers_the_worst_case_request(self) -> None:
+        """Regression: Cloud Run ran with ``--timeout 120`` while one agent request could
+        legally take the 90 s wall clock plus a 90 s tools-off final call, so the platform
+        answered 504 while the worker kept running and paying for tokens. Every place that
+        states the gcloud command must carry the same ``--timeout``, and it must cover
+        ``Settings.worst_case_request_s()`` plus headroom for retrieval, verification and
+        retry back-off, while staying within Container Apps' fixed 240 s ingress timeout."""
+        settings = Settings(_env_file=None)
+        worst_case = settings.worst_case_request_s()
+        headroom_s = 30.0
+        sources = {
+            "deploy-cloudrun.yml": "\n".join(
+                str(step.get("run", ""))
+                for step in load_workflow("deploy-cloudrun")["jobs"]["deploy"]["steps"]
+            ),
+            "infra/gcp/README.md": (REPO / "infra" / "gcp" / "README.md").read_text("utf-8"),
+            "docs/DEPLOY.md": (REPO / "docs" / "DEPLOY.md").read_text("utf-8"),
+        }
+        timeouts: dict[str, int] = {}
+        for name, text in sources.items():
+            found = {int(m) for m in re.findall(r"--timeout (\d+)", text)}
+            assert len(found) == 1, f"{name} must state exactly one --timeout value: {found}"
+            timeouts[name] = found.pop()
+        assert len(set(timeouts.values())) == 1, f"deploy timeouts disagree: {timeouts}"
+        timeout = timeouts["deploy-cloudrun.yml"]
+        assert timeout >= worst_case + headroom_s, (
+            f"--timeout {timeout} < worst case {worst_case:g} s + {headroom_s:g} s headroom"
+        )
+        assert timeout <= 240, "must also hold on Container Apps (ingress timeout fixed at 240 s)"
+
+    def test_deploy_docs_state_the_timeout_invariant(self) -> None:
+        deploy = (REPO / "docs" / "DEPLOY.md").read_text(encoding="utf-8")
+        env_table = deploy.split("## Environment")[1].split("### Request timeouts")[0]
+        for var in (
+            "SECQA_REQUEST_TIMEOUT_S",
+            "SECQA_PROVIDER_TIMEOUT_S",
+            "SECQA_PROVIDER_MAX_RETRIES",
+        ):
+            assert f"`{var}`" in env_table, var
+        section = deploy.split("### Request timeouts")[1].split("## GCP Cloud Run")[0]
+        assert "platform timeout >= SECQA_REQUEST_TIMEOUT_S" in section
+        assert "worst_case_request_s" in section
+        for path in (REPO / ".env.example", CLOUDRUN_ENV):
+            text = path.read_text(encoding="utf-8")
+            assert "SECQA_PROVIDER_TIMEOUT_S" in text and "SECQA_REQUEST_TIMEOUT_S" in text, path
 
 
 class TestMakefile:

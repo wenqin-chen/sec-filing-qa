@@ -198,7 +198,9 @@ class TestDeploy:
             "--cpu-boost",
             "--max-instances 2",
             "--concurrency 4",
-            "--timeout 120",
+            # SPEC section 10 said 120; that value was the bug (a request may legally run
+            # 180 s). tests/ops/test_infra.py derives the bound from Settings.
+            "--timeout 240",
             "--set-secrets",
             "--set-env-vars",
         ):

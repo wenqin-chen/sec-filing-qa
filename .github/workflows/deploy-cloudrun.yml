@@ -127,7 +127,9 @@ jobs:
             --min-instances "${{ vars.CLOUD_RUN_MIN_INSTANCES || '0' }}"
             --max-instances 2
             --concurrency 4
-            --timeout 120
+            # >= SECQA_REQUEST_TIMEOUT_S + SECQA_PROVIDER_TIMEOUT_S * (SECQA_PROVIDER_MAX_RETRIES + 1)
+            # + headroom (docs/DEPLOY.md "Request timeouts"); 240 s also matches Container Apps.
+            --timeout 240
             --port 8080
             --allow-unauthenticated
             --set-env-vars "${ENV_VARS}"

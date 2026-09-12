@@ -67,7 +67,7 @@ docker pull "$IMAGE" && docker tag "$IMAGE" "$TARGET" && docker push "$TARGET"  
 
 gcloud run deploy sec-filing-qa --image "$TARGET" --region "$REGION" \
     --memory 2Gi --cpu 1 --cpu-boost --min-instances 0 --max-instances 2 \
-    --concurrency 4 --timeout 120 --port 8080 --allow-unauthenticated \
+    --concurrency 4 --timeout 240 --port 8080 --allow-unauthenticated \
     --env-vars-file cloudrun.env.yaml \
     --set-secrets OPENAI_API_KEY=openai-api-key:latest,ANTHROPIC_API_KEY=anthropic-api-key:latest,SECQA_API_KEY=secqa-api-key:latest
 URL=$(gcloud run services describe sec-filing-qa --region "$REGION" --format 'value(status.url)')

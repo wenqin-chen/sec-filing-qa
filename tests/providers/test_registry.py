@@ -10,6 +10,7 @@ import pytest
 
 from secqa.core.errors import ConfigError
 from secqa.core.settings import Settings
+from secqa.providers.deadline import CallBudget
 from secqa.providers.mock_provider import MockProvider
 from secqa.providers.registry import get_provider, parse_spec
 from secqa.providers.replay_provider import ReplayCacheProvider
@@ -103,3 +104,29 @@ def test_package_import_does_not_import_vendor_sdks() -> None:
     get_provider("mock", Settings(_env_file=None))
     assert "openai" not in sys.modules
     assert "anthropic" not in sys.modules
+
+
+@pytest.mark.parametrize("spec", ["openai:gpt-test", "anthropic:claude-sonnet-5"])
+def test_vendor_timeout_is_the_provider_setting_not_the_request_deadline(
+    settings_override: Callable[..., Settings], spec: str
+) -> None:
+    """Regression: the registry used to hand ``request_timeout_s`` (the 90 s wall clock) to the
+    SDK as its per-attempt timeout and left the SDK's default two retries, so one call could
+    block for 270 s. The vendor client must get ``provider_timeout_s`` / ``provider_max_retries``,
+    and one call with all its retries must fit inside the request deadline."""
+    pytest.importorskip(spec.split(":")[0])
+    settings = settings_override(
+        openai_api_key="sk-test-not-real",
+        anthropic_api_key="sk-ant-test-not-real",
+        request_timeout_s=90,
+        provider_timeout_s=7.5,
+        provider_max_retries=0,
+    )
+    provider = get_provider(spec, settings)
+    assert provider.timeout_s == 7.5 and provider.max_retries == 0  # type: ignore[attr-defined]
+    client = provider._client  # type: ignore[attr-defined]
+    assert client.timeout == 7.5 and client.max_retries == 0
+    assert client.timeout != settings.request_timeout_s
+    assert CallBudget(provider.timeout_s, provider.max_retries).worst_case_s <= (  # type: ignore[attr-defined]
+        settings.request_timeout_s
+    )
