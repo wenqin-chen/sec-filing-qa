@@ -187,6 +187,41 @@ def test_readding_a_document_is_idempotent(
     assert populated_store.get_chunks([acme[3].chunk_id]) == []
 
 
+def test_delete_document_removes_rows_and_invalidates_bm25(
+    populated_store: DuckDBStore, corpus: tuple[list[Chunk], dict[str, str]]
+) -> None:
+    chunks, seeded = corpus
+    exact_doc = next(c.doc_name for c in chunks if c.chunk_id == seeded["exact"])
+    before = populated_store.counts()
+    n_doc_chunks = sum(1 for c in chunks if c.doc_name == exact_doc)
+    assert populated_store.search_bm25(EXACT_PHRASE, k=1)[0].chunk.chunk_id == seeded["exact"]
+
+    assert populated_store.delete_document(exact_doc) is True
+    after = populated_store.counts()
+    assert after["documents"] == before["documents"] - 1
+    assert after["pages"] == before["pages"] - 5
+    assert after["chunks"] == before["chunks"] - n_doc_chunks
+    assert populated_store.get_pages(exact_doc, [1]) == []
+    assert populated_store.get_chunks([seeded["exact"]]) == []
+    # The stale FTS snapshot is rebuilt before the next search, so the deleted chunk is gone.
+    hits = populated_store.search_bm25(EXACT_PHRASE, k=5)
+    assert all(hit.chunk.doc_name != exact_doc for hit in hits)
+    assert populated_store.manifest().n_chunks == after["chunks"]
+    # Facts are keyed by CIK, not by document, so they are untouched; a second call is a no-op.
+    assert after["facts"] == before["facts"]
+    assert populated_store.delete_document(exact_doc) is False
+    assert populated_store.counts() == after
+
+
+def test_delete_document_refused_on_read_only(tmp_duckdb_path: Path) -> None:
+    with DuckDBStore(tmp_duckdb_path, embed_dim=DIM) as store:
+        store.init_schema("hashing", DIM)
+        store.upsert_document(make_document("ACME_2022_10K"))
+    with DuckDBStore(tmp_duckdb_path, read_only=True) as store:
+        with pytest.raises(ConfigError, match="read-only"):
+            store.delete_document("ACME_2022_10K")
+
+
 # ---- search -------------------------------------------------------------------------------
 
 

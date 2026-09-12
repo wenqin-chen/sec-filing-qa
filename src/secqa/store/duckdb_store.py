@@ -548,6 +548,40 @@ class DuckDBStore:
         self._py_bm25 = None
         log.info("chunks_added", n_chunks=len(chunks), n_documents=len(doc_names))
 
+    def delete_document(self, doc_name: str) -> bool:
+        """Remove one document with all its pages and chunks in one transaction.
+
+        Returns ``True`` when a ``documents`` row existed. Pages and chunks are deleted even
+        when the document row is missing (an interrupted ingest writes the row last), and the
+        BM25 indexes are marked stale so deleted chunks can never be returned by a search.
+        XBRL facts are keyed by CIK, not by document, and are untouched.
+        """
+        self._require_writable("delete_document")
+        conn = self.conn
+        conn.execute("BEGIN TRANSACTION")
+        try:
+            chunk_rows = conn.execute(
+                "DELETE FROM chunks WHERE doc_name = ? RETURNING chunk_id", [doc_name]
+            ).fetchall()
+            conn.execute("DELETE FROM pages WHERE doc_name = ?", [doc_name])
+            doc_rows = conn.execute(
+                "DELETE FROM documents WHERE doc_name = ? RETURNING doc_name", [doc_name]
+            ).fetchall()
+            conn.execute("COMMIT")
+        except BaseException:
+            conn.execute("ROLLBACK")
+            raise
+        if chunk_rows:
+            self._fts_stale = True
+            self._py_bm25 = None
+        log.info(
+            "document_deleted",
+            doc_name=doc_name,
+            existed=bool(doc_rows),
+            n_chunks=len(chunk_rows),
+        )
+        return bool(doc_rows)
+
     def rebuild_fts(self) -> None:
         """Rebuild the BM25 index over ``chunks.text`` and refresh manifest counts.
 

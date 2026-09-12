@@ -1,0 +1,29 @@
+{
+  "cik": 1234567,
+  "entityName": "Fixture Corp",
+  "facts": {
+    "us-gaap": {
+      "Revenues": {
+        "label": "Revenues",
+        "description": "Synthetic fixture: total revenue.",
+        "units": {
+          "USD": [
+            {"start": "2022-01-01", "end": "2022-12-31", "val": 1408000000, "accn": "0001234567-23-000010", "fy": 2022, "fp": "FY", "form": "10-K", "filed": "2023-02-15", "frame": "CY2022"},
+            {"start": "2022-01-01", "end": "2022-12-31", "val": 1408000000, "accn": "0001234567-24-000010", "fy": 2023, "fp": "FY", "form": "10-K", "filed": "2024-02-15"},
+            {"start": "2023-01-01", "end": "2023-12-31", "val": 1577000000, "accn": "0001234567-24-000010", "fy": 2023, "fp": "FY", "form": "10-K", "filed": "2024-02-15", "frame": "CY2023"}
+          ]
+        }
+      },
+      "Assets": {
+        "label": "Assets",
+        "description": "Synthetic fixture: total assets.",
+        "units": {
+          "USD": [
+            {"end": "2022-12-31", "val": 3100000000, "accn": "0001234567-23-000010", "fy": 2022, "fp": "FY", "form": "10-K", "filed": "2023-02-15", "frame": "CY2022Q4I"},
+            {"end": "2023-12-31", "val": 3350000000, "accn": "0001234567-24-000010", "fy": 2023, "fp": "FY", "form": "10-K", "filed": "2024-02-15", "frame": "CY2023Q4I"}
+          ]
+        }
+      }
+    }
+  }
+}

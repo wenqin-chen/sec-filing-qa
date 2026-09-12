@@ -352,7 +352,9 @@ class Answer(Frozen):
     steps: int = 1
     tool_calls: int = 0
     terminated_by: Terminated
-    prompt_hashes: dict[str, str] = Field(default_factory=dict)
+    prompt_hashes: dict[str, str] = Field(
+        default_factory=dict
+    )  # {prompt file: sha256} of the prompt(s) THIS request used; rag.prompt_hashes() lists all
 
 
 # ---------- evaluation ----------

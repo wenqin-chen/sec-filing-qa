@@ -1,0 +1,144 @@
+# FinanceBench company -> ticker -> SEC CIK (SPEC 4.1: "the one manual data task").
+#
+# Used by `secqa ingest financebench` to attach ticker/CIK to each PDF (so the ticker filter and
+# lookup_fact work) and by `secqa data companies-xbrl` to pull companyfacts for every company.
+#
+# `financebench_aliases` are the company prefixes of FinanceBench doc_name values
+# ('JOHNSON_JOHNSON' in 'JOHNSON_JOHNSON_2022_10K'); matching is case- and punctuation-
+# insensitive and also accepts the ticker and the display name.
+#
+# CIKs verified against https://www.sec.gov/files/company_tickers.json and
+# https://data.sec.gov/submissions/CIK##########.json on 2026-09-11. Three companies no longer
+# trade under the ticker FinanceBench knew them by; their CIKs still serve companyfacts:
+#   - Activision Blizzard (ATVI) was acquired by Microsoft in October 2023 (delisted).
+#   - Block traded as SQ until January 2025; EDGAR now lists it as XYZ.
+#   - Foot Locker (FL) was acquired by Dick's Sporting Goods in 2025 (Form 15 filed).
+companies:
+  - name: 3M Company
+    ticker: MMM
+    cik: "0000066740"
+    financebench_aliases: ["3M"]
+  - name: Activision Blizzard
+    ticker: ATVI
+    cik: "0000718877"
+    financebench_aliases: ["ACTIVISIONBLIZZARD"]
+  - name: Adobe
+    ticker: ADBE
+    cik: "0000796343"
+    financebench_aliases: ["ADOBE"]
+  - name: AES Corporation
+    ticker: AES
+    cik: "0000874761"
+    financebench_aliases: ["AES"]
+  - name: Amazon
+    ticker: AMZN
+    cik: "0001018724"
+    financebench_aliases: ["AMAZON"]
+  - name: Amcor
+    ticker: AMCR
+    cik: "0001748790"
+    financebench_aliases: ["AMCOR"]
+  - name: Advanced Micro Devices
+    ticker: AMD
+    cik: "0000002488"
+    financebench_aliases: ["AMD"]
+  - name: American Express
+    ticker: AXP
+    cik: "0000004962"
+    financebench_aliases: ["AMERICANEXPRESS"]
+  - name: American Water Works
+    ticker: AWK
+    cik: "0001410636"
+    financebench_aliases: ["AMERICANWATERWORKS"]
+  - name: Best Buy
+    ticker: BBY
+    cik: "0000764478"
+    financebench_aliases: ["BESTBUY"]
+  - name: Block
+    ticker: XYZ
+    cik: "0001512673"
+    financebench_aliases: ["BLOCK", "SQUARE"]
+  - name: Boeing
+    ticker: BA
+    cik: "0000012927"
+    financebench_aliases: ["BOEING"]
+  - name: Coca-Cola
+    ticker: KO
+    cik: "0000021344"
+    financebench_aliases: ["COCACOLA"]
+  - name: Corning
+    ticker: GLW
+    cik: "0000024741"
+    financebench_aliases: ["CORNING"]
+  - name: Costco
+    ticker: COST
+    cik: "0000909832"
+    financebench_aliases: ["COSTCO"]
+  - name: CVS Health
+    ticker: CVS
+    cik: "0000064803"
+    financebench_aliases: ["CVSHEALTH"]
+  - name: Foot Locker
+    ticker: FL
+    cik: "0000850209"
+    financebench_aliases: ["FOOTLOCKER"]
+  - name: General Mills
+    ticker: GIS
+    cik: "0000040704"
+    financebench_aliases: ["GENERALMILLS"]
+  - name: Johnson & Johnson
+    ticker: JNJ
+    cik: "0000200406"
+    financebench_aliases: ["JOHNSON_JOHNSON"]
+  - name: JPMorgan Chase
+    ticker: JPM
+    cik: "0000019617"
+    financebench_aliases: ["JPMORGAN"]
+  - name: Kraft Heinz
+    ticker: KHC
+    cik: "0001637459"
+    financebench_aliases: ["KRAFTHEINZ"]
+  - name: Lockheed Martin
+    ticker: LMT
+    cik: "0000936468"
+    financebench_aliases: ["LOCKHEEDMARTIN"]
+  - name: MGM Resorts
+    ticker: MGM
+    cik: "0000789570"
+    financebench_aliases: ["MGMRESORTS"]
+  - name: Microsoft
+    ticker: MSFT
+    cik: "0000789019"
+    financebench_aliases: ["MICROSOFT"]
+  - name: Netflix
+    ticker: NFLX
+    cik: "0001065280"
+    financebench_aliases: ["NETFLIX"]
+  - name: Nike
+    ticker: NKE
+    cik: "0000320187"
+    financebench_aliases: ["NIKE"]
+  - name: PayPal
+    ticker: PYPL
+    cik: "0001633917"
+    financebench_aliases: ["PAYPAL"]
+  - name: PepsiCo
+    ticker: PEP
+    cik: "0000077476"
+    financebench_aliases: ["PEPSICO"]
+  - name: Pfizer
+    ticker: PFE
+    cik: "0000078003"
+    financebench_aliases: ["PFIZER"]
+  - name: Ulta Beauty
+    ticker: ULTA
+    cik: "0001403568"
+    financebench_aliases: ["ULTABEAUTY"]
+  - name: Verizon
+    ticker: VZ
+    cik: "0000732712"
+    financebench_aliases: ["VERIZON"]
+  - name: Walmart
+    ticker: WMT
+    cik: "0000104169"
+    financebench_aliases: ["WALMART"]
