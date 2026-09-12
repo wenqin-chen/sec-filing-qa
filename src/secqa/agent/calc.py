@@ -11,7 +11,9 @@ Everything else (names, attributes, subscripts, comparisons, boolean logic, stri
 lambdas, ``//``, bit operations, other function names) is rejected.
 
 Resource bounds: the expression is capped at :data:`MAX_EXPRESSION_CHARS`, exponents at
-:data:`MAX_EXPONENT`, and every intermediate integer must fit in a ``float`` so that
+:data:`MAX_EXPONENT`, ``round()`` digits at :data:`MAX_ROUND_DIGITS` (CPython computes
+``10**-ndigits`` for an integer operand, so ``round(5, -10**9)`` would otherwise pin a CPU
+core for hours), and every intermediate integer must fit in a ``float`` so that
 ``(10**300)**300`` cannot allocate a million-digit integer. The result is always a finite
 ``float``; division by zero, overflow, NaN and complex results are rejected.
 """
@@ -34,6 +36,14 @@ MAX_EXPRESSION_CHARS = 500
 
 MAX_EXPONENT = 1000
 """Largest absolute exponent accepted by ``**`` (``2**1000`` is already ~1e301)."""
+
+MAX_ROUND_DIGITS = 400
+"""Largest absolute ``ndigits`` accepted by ``round()``.
+
+A float spans roughly 1e-324 to 1e308, so no value the calculator can hold changes under
+``round`` past 400 digits either way; the bound only exists to stop the integer power that
+CPython builds for a large negative ``ndigits``.
+"""
 
 _MAX_INT_BITS = 1024  # an int wider than this cannot become a float (DBL_MAX ~ 2**1024)
 
@@ -161,6 +171,8 @@ def _call(node: ast.Call) -> int | float:
         digits = arguments[1]
         if isinstance(digits, float) and not digits.is_integer():
             raise CalcRejected("round() digits must be an integer")
+        if abs(digits) > MAX_ROUND_DIGITS:  # checked before int(): 1e300 must not get through
+            raise CalcRejected(f"round() digits {digits!r} exceed the limit of {MAX_ROUND_DIGITS}")
         arguments[1] = int(digits)
     return _bounded(function(*arguments))
 
@@ -196,4 +208,4 @@ def _describe(node: ast.AST) -> str:
     return type(node).__name__
 
 
-__all__ = ["MAX_EXPONENT", "MAX_EXPRESSION_CHARS", "safe_calculate"]
+__all__ = ["MAX_EXPONENT", "MAX_EXPRESSION_CHARS", "MAX_ROUND_DIGITS", "safe_calculate"]

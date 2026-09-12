@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import math
+import time
 
 import pytest
 
 from secqa.agent import safe_calculate
-from secqa.agent.calc import MAX_EXPONENT, MAX_EXPRESSION_CHARS
+from secqa.agent.calc import MAX_EXPONENT, MAX_EXPRESSION_CHARS, MAX_ROUND_DIGITS
 from secqa.core.errors import CalcRejected
 
 # ---- accepted arithmetic ------------------------------------------------------------------
@@ -135,6 +136,30 @@ def test_rejects_overlong_expressions() -> None:
 def test_round_with_fractional_digits_is_rejected() -> None:
     with pytest.raises(CalcRejected, match="digits must be an integer"):
         safe_calculate("round(2.5, 1.5)")
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "round(5, -10**9)",  # CPython builds 10**(10**9) for an int operand: hours of CPU
+        "round(5, -1000000)",
+        "round(5, 10**9)",
+        "round(5, 1e300)",  # a float that is integral but far too large to become ndigits
+        "round(5.0, -1e300)",
+        f"round(5, -{MAX_ROUND_DIGITS + 1})",
+    ],
+)
+def test_round_with_huge_digits_is_rejected_fast(expression: str) -> None:
+    started = time.perf_counter()
+    with pytest.raises(CalcRejected, match="exceed the limit"):
+        safe_calculate(expression)
+    assert time.perf_counter() - started < 0.5
+
+
+def test_round_digits_at_the_limit_are_accepted() -> None:
+    assert safe_calculate(f"round(5, -{MAX_ROUND_DIGITS})") == 0.0
+    assert safe_calculate(f"round(5, {MAX_ROUND_DIGITS})") == 5.0
+    assert safe_calculate(f"round(2.5678, {MAX_ROUND_DIGITS})") == 2.5678
 
 
 def test_result_is_always_a_plain_float() -> None:
