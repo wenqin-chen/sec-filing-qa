@@ -9,6 +9,12 @@ a missing recording raises :class:`~secqa.core.errors.CassetteMiss` loudly inste
 Passing a ``judge`` re-judges with that model (recording new cassettes into the same directory)
 -- the path a judge-prompt revision takes. Mock and scripted providers are deterministic and are
 simply re-run.
+
+Timings are the one thing a replay cannot regenerate: a cassette hit answers in microseconds, so
+``latency_ms`` / ``retrieval_ms`` / ``llm_ms`` of a cassette-served rescore are carried over from
+the previous ``predictions.jsonl`` (the original run's measurement) and ``config.json`` records
+``rescore_timings = "carried_over"``. Mock and scripted re-runs are measured afresh
+(``"remeasured"``).
 """
 
 from __future__ import annotations
@@ -16,10 +22,11 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from secqa.core.contracts import (
     Embedder,
+    EvalRecord,
     FBQuestion,
     LLMProvider,
     LLMResponse,
@@ -31,7 +38,7 @@ from secqa.core.errors import ConfigError, ProviderError
 from secqa.core.logging import get_logger
 from secqa.core.settings import get_settings, provider_vendor
 from secqa.eval.judge import RULE_JUDGE, Judge, LLMJudge, RuleJudge
-from secqa.eval.metrics import CONFIG_NAME, PREDICTIONS_NAME, SUMMARY_NAME
+from secqa.eval.metrics import CONFIG_NAME, PREDICTIONS_NAME, SUMMARY_NAME, read_records, summarize
 from secqa.eval.runner import EvalConfig, run_eval
 from secqa.providers import ReplayCacheProvider, get_provider
 from secqa.providers.base import BaseProvider, Effort
@@ -41,6 +48,8 @@ from secqa.store import DuckDBStore
 log = get_logger(__name__)
 
 PREVIOUS_PREDICTIONS_NAME = "predictions.previous.jsonl"
+TIMING_FIELDS: tuple[str, ...] = ("latency_ms", "retrieval_ms", "llm_ms")
+RescoreTimings = Literal["carried_over", "remeasured"]
 
 
 class ReplayStub(BaseProvider):
@@ -99,6 +108,36 @@ def _replay_provider(vendor: str, model: str, spec: str, cassette_dir: Path | No
     )
 
 
+def carry_over_timings(pred_path: Path, previous_path: Path) -> int:
+    """Copy the per-question timings of ``previous_path`` onto ``pred_path`` in place.
+
+    A replayed answer was never timed: the provider returned a cassette entry in microseconds, so
+    the only real measurement of that question is the one the previous predictions hold. Records
+    are matched by ``financebench_id``; a record without a completed counterpart (either side
+    carries an ``error``) keeps its own timings. Returns the number of records updated.
+    """
+    previous = {
+        rec.financebench_id: rec for rec in read_records(previous_path) if rec.error is None
+    }
+    records = read_records(pred_path)
+    updated: list[EvalRecord] = []
+    n_updated = 0
+    for rec in records:
+        prior = previous.get(rec.financebench_id)
+        if prior is None or rec.error is not None:
+            updated.append(rec)
+            continue
+        updated.append(
+            rec.model_copy(update={name: getattr(prior, name) for name in TIMING_FIELDS})
+        )
+        n_updated += 1
+    with pred_path.open("w", encoding="utf-8") as fh:
+        for rec in updated:
+            fh.write(json.dumps(rec.model_dump(mode="json"), ensure_ascii=False) + "\n")
+    log.info("rescore_timings_carried_over", n_updated=n_updated, n_records=len(records))
+    return n_updated
+
+
 def rescore(
     run_dir: Path,
     questions: list[FBQuestion],
@@ -123,7 +162,10 @@ def rescore(
             ``config.json``, e.g. after unpacking ``cassettes/<run_id>.tar.zst`` in place).
         embedder: Embedder override for the retrieving modes.
 
-    The previous predictions are kept as ``predictions.previous.jsonl`` for diffing.
+    The previous predictions are kept as ``predictions.previous.jsonl`` for diffing. When the
+    answers are served from cassettes, the per-question timings (``latency_ms``,
+    ``retrieval_ms``, ``llm_ms``) are carried over from them: a replay cannot re-measure a call it
+    never made. ``config.json`` records which happened in ``rescore_timings``.
 
     Raises:
         ConfigError: missing config, index, cassettes or questions.
@@ -190,6 +232,15 @@ def rescore(
         if own_store:
             store.close()
 
+    timings: RescoreTimings = "remeasured"
+    if (
+        isinstance(provider, ReplayCacheProvider)
+        and (run_dir / PREVIOUS_PREDICTIONS_NAME).is_file()
+    ):
+        carry_over_timings(run_dir / PREDICTIONS_NAME, run_dir / PREVIOUS_PREDICTIONS_NAME)
+        summarize(run_dir / PREDICTIONS_NAME, seed=original.seed)
+        timings = "carried_over"
+
     summary = RunSummary.model_validate(
         json.loads((run_dir / SUMMARY_NAME).read_text(encoding="utf-8"))
     )
@@ -197,6 +248,7 @@ def rescore(
     raw = json.loads(config_path.read_text(encoding="utf-8"))
     raw["rescored_at"] = datetime.now(UTC).isoformat()
     raw["rescore_judge"] = resolved_judge.model
+    raw["rescore_timings"] = timings
     config_path.write_text(json.dumps(raw, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     log.info(
         "run_rescored",
@@ -204,9 +256,17 @@ def rescore(
         n=summary.n,
         n_completed=summary.n_completed,
         judge=resolved_judge.model,
+        timings=timings,
         accuracy=summary.metrics.get("accuracy"),
     )
     return summary
 
 
-__all__ = ["PREVIOUS_PREDICTIONS_NAME", "ReplayStub", "read_run_config", "rescore"]
+__all__ = [
+    "PREVIOUS_PREDICTIONS_NAME",
+    "TIMING_FIELDS",
+    "ReplayStub",
+    "carry_over_timings",
+    "read_run_config",
+    "rescore",
+]

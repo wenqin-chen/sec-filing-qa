@@ -26,6 +26,7 @@ from secqa.grounding import CitationVerifier
 from secqa.providers.mock_provider import MockProvider
 from secqa.providers.openai_provider import openai_to_response
 from secqa.providers.pricing import PriceTable
+from secqa.providers.replay_provider import ReplayCacheProvider
 from secqa.providers.scripted_provider import ScriptedProvider
 from secqa.rag import (
     ABSTAIN_TEXT,
@@ -209,6 +210,27 @@ def test_usage_cost_latency_and_trace_populated(
     assert llm.arguments["system"] == "rag_system.md" and llm.error is None
     assert verify.name == "citation_verifier"
     assert answer.prompt_hashes == {"rag_system.md": prompt_hashes()["rag_system.md"]}
+
+
+def test_replayed_response_reports_the_recorded_llm_latency(
+    retriever: Retriever, verifier: CitationVerifier, prices: PriceTable, tmp_path: Path
+) -> None:
+    """A cassette hit answers in microseconds; ``llm_ms`` must be the recorded measurement."""
+    inner = FixedProvider(
+        parsed={"answer": ABSTAIN_TEXT, "abstain": True, "citations": []}, latency_ms=750.0
+    )
+    provider = ReplayCacheProvider(inner, cache_dir=tmp_path, mode="record")
+    pipeline = RagPipeline(retriever, provider, verifier, prices)
+
+    fresh = pipeline.answer(NET_SALES_QUESTION)  # recorded: wall clock around a fixed provider
+    replayed = pipeline.answer(NET_SALES_QUESTION)  # served from the cassette
+    assert provider.hits == 1 and provider.misses == 1
+
+    assert fresh.llm_ms < 750.0
+    assert replayed.llm_ms == 750.0
+    assert replayed.latency_ms >= replayed.llm_ms + replayed.retrieval_ms
+    llm_step = next(step for step in replayed.trace if step.kind == "llm")
+    assert llm_step.latency_ms == 750.0
 
 
 def test_mock_provider_costs_nothing(pipeline: RagPipeline) -> None:

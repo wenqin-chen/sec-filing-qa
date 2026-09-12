@@ -88,7 +88,10 @@ All computed by `secqa.eval.metrics` from `EvalRecord`s; every one has a unit te
   share of answered questions whose every numeric token appears in a verified quote, verified
   fact or `calculate()` result. Both are `n/a` for `closed_book`.
 - **Latency** p50 / p95 per question, split into retrieval and LLM time (LLM cache off during
-  timed runs; replays keep the recorded latency and are flagged `cached`).
+  timed runs). A cassette hit answers in microseconds, so a replayed call reports the latency
+  the recording run measured (`LLMResponse.cached`), and `secqa rescore` carries every
+  per-question timing over from the previous `predictions.jsonl` (`config.json`:
+  `rescore_timings = carried_over`); only mock / scripted re-runs are re-timed (`remeasured`).
 - **Cost**: `cost_usd` per question from `Usage` × `models.yaml` (uncached input, cached input,
   cache write, output); judge cost is accounted separately. `$/question` in the table is the
   answering cost only.
@@ -165,8 +168,9 @@ reason (`requires OPENAI_API_KEY and the FinanceBench index`, ...), never an omi
    hash. Cassettes are Release assets, never git.
 2. **Rescore.** `SECQA_CASSETTE_MODE=replay uv run secqa rescore --run results/<config>/<run_id>`
    rebuilds the exact pipeline (same config, index, prompts) over replay-only providers and
-   regenerates predictions, metrics, intervals and the summary byte-for-byte with zero keys. A
-   missing entry raises `CassetteMiss` instead of paying.
+   regenerates predictions, metrics, intervals and the summary byte-for-byte with zero keys
+   (timings are carried over from the original measurement, see *Latency* above). A missing
+   entry raises `CassetteMiss` instead of paying.
 3. **CI.** Every push runs `secqa eval --config configs/rag_mock.yaml --limit 6` over the fixture
    corpus and asserts the file schema; `tests/eval/test_report.py` pins the report layout to a
    golden file; `tests/docs/test_results_markers.py` fails when `RESULTS.md` or the README block

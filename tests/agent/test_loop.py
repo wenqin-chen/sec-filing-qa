@@ -12,7 +12,7 @@ import pytest
 from secqa.agent import AGENT_SYSTEM, AgentLoop, ToolRuntime, agent_prompt_hash
 from secqa.agent.loop import FINAL_PROMPT, NUDGE_PROMPT, build_agent_prompt, load_agent_prompt
 from secqa.agent.tools import FINAL_ANSWER_SCHEMA, TOOLS
-from secqa.core.contracts import Answer, RetrievalFilters
+from secqa.core.contracts import Answer, LLMResponse, Message, RetrievalFilters, ToolSpec
 from secqa.core.errors import ProviderError
 from secqa.core.ids import sha256_hex
 from secqa.providers.deadline import remaining_s
@@ -160,6 +160,48 @@ def test_happy_path_search_lookup_calculate_final(
     assert answer.provider == "scripted"
     assert provider.turns_consumed == 4
     assert runtime.seen_facts[REVENUE_REF].accn.endswith("-24-000010")
+
+
+class CachedScripted(RecordingScripted):
+    """Every reply looks like a cassette hit: ``cached=True`` with a recorded latency."""
+
+    RECORDED_MS = 400.0
+
+    def complete(
+        self,
+        messages: list[Message],
+        *,
+        system: str = "",
+        tools: list[ToolSpec] | None = None,
+        json_schema: dict[str, Any] | None = None,
+        max_tokens: int = 2048,
+        effort: Any = None,
+    ) -> LLMResponse:
+        response = super().complete(
+            messages,
+            system=system,
+            tools=tools,
+            json_schema=json_schema,
+            max_tokens=max_tokens,
+            effort=effort,
+        )
+        return response.model_copy(update={"cached": True, "latency_ms": self.RECORDED_MS})
+
+
+def test_replayed_calls_report_the_recorded_llm_latency(make_loop: LoopFactory) -> None:
+    """Cassette hits answer in microseconds; ``llm_ms`` sums the recorded per-call latency."""
+    provider = CachedScripted(
+        [
+            search_turn("total net sales fiscal 2023"),
+            final_turn(NET_SALES_SENTENCE, citations=[net_sales_citation()]),
+        ]
+    )
+    answer = make_loop(provider).run(NET_SALES_QUESTION)
+
+    assert answer.steps == 2
+    assert answer.llm_ms == 2 * CachedScripted.RECORDED_MS
+    assert answer.latency_ms >= answer.llm_ms
+    assert [s.latency_ms for s in answer.trace if s.kind == "llm"] == [400.0, 400.0]
 
 
 def test_message_protocol_one_tool_message_per_step(make_loop: LoopFactory) -> None:

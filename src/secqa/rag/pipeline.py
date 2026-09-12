@@ -323,7 +323,11 @@ def _single_shot(
             error=str(exc),
         )
         raise
-    llm_ms = (time.perf_counter() - llm_started) * 1000.0
+    llm_wall_ms = (time.perf_counter() - llm_started) * 1000.0
+    # A cassette hit answers in microseconds; the only real measurement of that call is the one
+    # the recording run stored in ``response.latency_ms``. Report it (and below, swap it into the
+    # whole-question wall clock) so replays never publish near-zero LLM timings.
+    llm_ms = response.latency_ms if response.cached else llm_wall_ms
 
     parsed = parse_structured_answer(response)
     structured = parsed.answer
@@ -386,7 +390,7 @@ def _single_shot(
         trace=trace,
         usage=response.usage,
         cost_usd=cost,
-        latency_ms=(time.perf_counter() - started) * 1000.0,
+        latency_ms=(time.perf_counter() - started) * 1000.0 - llm_wall_ms + llm_ms,
         retrieval_ms=prepared.retrieval_ms,
         llm_ms=llm_ms,
         provider=response.provider,

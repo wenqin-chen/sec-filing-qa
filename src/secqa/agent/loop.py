@@ -158,7 +158,8 @@ class _RunState:
     cost_usd: float = 0.0
     last_call_cost: float = 0.0
     prompt_tokens: int = 0
-    llm_ms: float = 0.0
+    llm_ms: float = 0.0  # reported LLM time: recorded latency for cassette hits, else measured
+    llm_wall_ms: float = 0.0  # measured LLM time (what the wall clock above actually contains)
     llm_calls: int = 0
     tool_calls: int = 0
     evidence_calls: int = 0
@@ -307,12 +308,16 @@ class AgentLoop:
                 error=str(exc),
             )
             raise
-        elapsed = (time.perf_counter() - llm_started) * 1000.0
+        wall_ms = (time.perf_counter() - llm_started) * 1000.0
+        # A cassette hit answers in microseconds; the only real measurement of that call is the
+        # one the recording run stored in ``response.latency_ms``, so report that instead.
+        elapsed = response.latency_ms if response.cached else wall_ms
         # Price on the configured id (validated by the pre-flight checks), not the vendor echo:
         # OpenAI answers with a dated snapshot id that is not a key in models.yaml.
         cost = self.prices.cost_usd(self.provider.provider, self.provider.model, response.usage)
         state.llm_calls += 1
         state.llm_ms += elapsed
+        state.llm_wall_ms += wall_ms
         state.usage = state.usage + response.usage
         state.cost_usd += cost
         state.last_call_cost = cost
@@ -515,7 +520,11 @@ class AgentLoop:
             trace=state.trace,
             usage=state.usage,
             cost_usd=round(state.cost_usd, 8),
-            latency_ms=(time.perf_counter() - state.started) * 1000.0,
+            # Whole-question wall clock with the measured LLM segments swapped for the reported
+            # ones, so a replayed answer still satisfies ``latency_ms >= llm_ms``.
+            latency_ms=(time.perf_counter() - state.started) * 1000.0
+            - state.llm_wall_ms
+            + state.llm_ms,
             retrieval_ms=self.runtime.retrieval_ms,
             llm_ms=state.llm_ms,
             provider=self.provider.provider,

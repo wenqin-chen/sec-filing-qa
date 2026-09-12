@@ -282,7 +282,8 @@ Full definitions in [`docs/EVAL.md`](docs/EVAL.md); the reasoning in [`docs/deci
   on a proportion spans roughly ±7–8 pp; **overlapping intervals are not evidence of a
   difference**, and no winner is declared.
 - **Reproducibility.** Every real run records cassettes; `secqa rescore` regenerates all metrics
-  and the table byte-for-byte with zero keys. Results files contain `financebench_id`,
+  and the table byte-for-byte with zero keys (per-question timings are carried over from the
+  original run, since a cassette hit cannot be re-timed). Results files contain `financebench_id`,
   prediction, retrieved pages, verdicts and usage, never the question / answer / evidence text.
 
 ## Non-goals (v0.1)
