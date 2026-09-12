@@ -49,6 +49,9 @@ def test_record_then_replay(tmp_path: Path, rag_prompt: list[Message]) -> None:
     entry = json.loads(entry_path.read_text())
     assert entry["key"] == key
     assert entry["request"]["system"] == "sys" and entry["request"]["effort"] == "low"
+    # The entry stores the prompt verbatim: a cassette recorded from a FinanceBench run therefore
+    # contains dataset text, which cassettes/README.md, NOTICE and LIMITATIONS.md must say.
+    assert entry["request"]["messages"][0]["content"] == rag_prompt[0].content
     assert not list((tmp_path / "cas").glob("*.tmp"))
 
     # record mode is read-through: a second identical call is served from disk

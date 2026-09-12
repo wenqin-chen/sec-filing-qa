@@ -3,7 +3,9 @@
 One cassette entry is one JSON file ``<cache_dir>/<key>.json`` where ``key`` is
 ``sha256(provider, model, system, messages, tools, json_schema, max_tokens, effort)`` (see
 :func:`secqa.providers.base.request_key`). The file stores the canonical request (for debugging)
-and the :class:`LLMResponse` verbatim.
+and the :class:`LLMResponse` verbatim. The stored request is the full prompt, so a cassette
+recorded from a FinanceBench run contains dataset text (question, reference answer,
+justification, gold evidence pages); ``cassettes/README.md`` states the distribution policy.
 
 Modes:
 

@@ -5,7 +5,7 @@ This product is licensed under the MIT License (see LICENSE).
 This NOTICE file carries third-party attributions; it is informational and not a licence.
 
 --------------------------------------------------------------------------------
-Data used for evaluation (not redistributed)
+Data used for evaluation
 --------------------------------------------------------------------------------
 
 FinanceBench
@@ -17,6 +17,10 @@ FinanceBench
   justification or evidence text from the dataset is committed here; results files
   under results/ carry only financebench_id values. The dataset is downloaded to a
   gitignored directory at run time by `secqa data financebench`.
+  Recorded LLM cassettes attached to GitHub Releases (never to this repository)
+  store every prompt in full and therefore contain question, answer, justification
+  and evidence text from the dataset. They are shared under CC-BY-NC-4.0 with this
+  attribution, for non-commercial evaluation reproducibility only.
 
 SEC EDGAR
   Filings (10-K, 10-Q), the company ticker file and the XBRL companyfacts API are

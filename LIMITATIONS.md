@@ -125,6 +125,11 @@ limits of what *is* built.
   never contains the question, gold answer or evidence text; re-scoring joins to a locally
   downloaded copy. A reader of the committed results cannot see *what* was asked without
   downloading the dataset themselves.
-- **Cassettes are Release assets, not git.** Recorded LLM calls contain passage text from the
-  filings (public domain) and the prompts (ours); they are published with the release, and a
-  rescore needs them downloaded first.
+- **Cassettes are Release assets, not git, and they do contain dataset text.** A cassette entry
+  stores the full request (system prompt and every message) next to the response. Answering
+  prompts embed the question, oracle prompts embed the gold evidence pages, and the correctness
+  judge's prompt embeds the question, the reference answer and the justification, so
+  `cassettes/<run_id>.tar.zst` carries FinanceBench text (CC-BY-NC-4.0) alongside filing passages
+  (public domain) and our prompts. Cassettes are attached to the GitHub Release, with attribution,
+  under that licence, for non-commercial evaluation reproducibility only; the git repository
+  itself never contains dataset text. A rescore needs them downloaded first.

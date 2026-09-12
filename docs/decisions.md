@@ -214,6 +214,10 @@ fixtures are synthetic. A pre-commit hook refuses PDFs.
 
 **Consequences.** Results are committed, diffable and reviewable in pull requests without
 redistributing the dataset; anyone can re-score them after downloading FinanceBench themselves.
+The rule covers git only: the recorded cassettes a rescore replays (Release assets, never git)
+store every prompt in full and therefore contain dataset text (question, reference answer,
+justification and gold evidence); they are shared under CC-BY-NC-4.0 with attribution, for non-commercial
+evaluation reproducibility only (`cassettes/README.md`).
 The cost is that a results file is not self-explanatory: a reader needs the dataset to see the
 question behind an id, and the README's error analysis describes cases without quoting them.
 

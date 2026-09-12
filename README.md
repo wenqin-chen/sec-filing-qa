@@ -313,7 +313,9 @@ Full definitions in [`docs/EVAL.md`](docs/EVAL.md); the reasoning in [`docs/deci
 - **Reproducibility.** Every real run records cassettes; `secqa rescore` regenerates all metrics
   and the table byte-for-byte with zero keys (per-question timings are carried over from the
   original run, since a cassette hit cannot be re-timed). Results files contain `financebench_id`,
-  prediction, retrieved pages, verdicts and usage, never the question / answer / evidence text.
+  prediction, retrieved pages, verdicts and usage, never the question / answer / evidence text;
+  the cassettes themselves do contain that text and are Release assets under the dataset's
+  licence (see [Licence and attribution](#licence-and-attribution)).
 
 ## Non-goals (v0.1)
 
@@ -341,8 +343,12 @@ The short list; the full one with consequences is [`LIMITATIONS.md`](LIMITATIONS
 
 - **Code:** MIT (`LICENSE`; third-party attributions in `NOTICE`).
 - **FinanceBench** (PatronusAI, Hugging Face `PatronusAI/financebench`): **CC-BY-NC-4.0**. Used for
-  evaluation only; never redistributed by this repository. Results files carry only
-  `financebench_id`s (ADR-08); the dataset is downloaded to the gitignored `data/raw/` at run time.
+  evaluation only. Nothing in git contains dataset text: results files carry only
+  `financebench_id`s (ADR-08) and the dataset is downloaded to the gitignored `data/raw/` at run
+  time. The recorded cassettes attached to GitHub Releases are the one place dataset text is
+  shared: they store every prompt in full (questions, reference answers, justifications and gold
+  evidence pages included) and are distributed under CC-BY-NC-4.0 with attribution, for
+  non-commercial evaluation reproducibility only (`cassettes/README.md`).
 - **SEC EDGAR** filings and companyfacts: public domain (U.S. government work). Requests carry the
   declared `SEC_USER_AGENT` and stay under the SEC's 10 req/s fair-access limit.
 - **`BAAI/bge-small-en-v1.5`**: MIT. OpenAI and Anthropic models are used through their APIs under

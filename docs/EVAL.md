@@ -17,7 +17,9 @@ reference a reader should be able to check any published number against.
   (report block in `docs/DATA.md`).
 - Corpus: the ~80 PDFs the open set references, extracted with pypdfium2, chunked page-bounded
   (512 tokens, 64 overlap), embedded with `bge-small-en-v1.5` (local). Retrieval rows use k = 20.
-- Licence: CC-BY-NC-4.0, evaluation only. Results files never contain dataset text (ADR-08).
+- Licence: CC-BY-NC-4.0, evaluation only. Results files never contain dataset text (ADR-08);
+  the recorded cassettes attached to Releases do (they store full prompts) and are shared under
+  the same licence with attribution (see *Reproducibility*).
 
 ## The matrix (v0.1 definition of done)
 
@@ -172,7 +174,10 @@ reason (`requires OPENAI_API_KEY and the FinanceBench index`, ...), never an omi
 
 1. **Cassettes.** Every real run wraps the provider in `ReplayCacheProvider(mode='record')`;
    every LLM and judge call is stored under `cassettes/<run_id>/` keyed by the canonical request
-   hash. Cassettes are Release assets, never git.
+   hash, with the full request (system prompt and messages) and the response. Because the
+   prompts embed the question, the reference answer, the justification and the gold evidence
+   pages, cassettes contain FinanceBench text: they are Release assets, never git, shared under
+   CC-BY-NC-4.0 with attribution for non-commercial evaluation reproducibility only.
 2. **Rescore.** `SECQA_CASSETTE_MODE=replay uv run secqa rescore --run results/<config>/<run_id>`
    rebuilds the exact pipeline (same config, index, prompts) over replay-only providers and
    regenerates predictions, metrics, intervals and the summary byte-for-byte with zero keys
