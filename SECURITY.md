@@ -35,7 +35,10 @@ order the code defends against it:
   *do* (no writes, no network, no ungrounded numbers), not what it can *say*.
 - Budgets and rate limits are per process and reset on restart; they are a cost fuse for a demo,
   not billing enforcement. Put the service behind your own gateway for anything else.
-- Rate limiting keys on the first `X-Forwarded-For` hop; on a deployment without a trusted
-  proxy a client can spoof that header.
+- Rate limiting keys on the socket peer unless `SECQA_TRUSTED_PROXY_HOPS` is set, in which
+  case it keys on the `X-Forwarded-For` entry that many positions from the right (`1` for Cloud
+  Run / Container Apps, which append the real client to a caller-supplied header). The leftmost
+  entry is never trusted. Setting the count higher than the real number of appending proxies
+  makes the key caller-controlled again.
 - The demo API key is a shared static secret compared with `hmac.compare_digest`; it is not user
   authentication.

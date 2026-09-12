@@ -95,6 +95,8 @@ var plainEnv = concat(
     { name: 'SECQA_MAX_COST_USD', value: maxCostUsd }
     { name: 'SECQA_DAILY_BUDGET_USD', value: dailyBudgetUsd }
     { name: 'SECQA_LOG_JSON', value: 'true' }
+    // Container Apps ingress appends the client address to X-Forwarded-For: key on the last hop.
+    { name: 'SECQA_TRUSTED_PROXY_HOPS', value: '1' }
     { name: 'SECQA_GIT_SHA', value: gitSha }
   ],
   empty(indexUrl) ? [] : [{ name: 'SECQA_INDEX_URL', value: indexUrl }]

@@ -91,7 +91,7 @@ jobs:
         run: |
           set -euo pipefail
           # --set-env-vars and --update-env-vars are mutually exclusive in gcloud: build one list.
-          ENV_VARS="SECQA_PROVIDER=${{ vars.SECQA_PROVIDER || 'mock' }},SECQA_EMBEDDER=${{ vars.SECQA_EMBEDDER || 'local' }},SECQA_LOG_JSON=true,SECQA_GIT_SHA=${{ github.sha }}"
+          ENV_VARS="SECQA_PROVIDER=${{ vars.SECQA_PROVIDER || 'mock' }},SECQA_EMBEDDER=${{ vars.SECQA_EMBEDDER || 'local' }},SECQA_LOG_JSON=true,SECQA_TRUSTED_PROXY_HOPS=1,SECQA_GIT_SHA=${{ github.sha }}"
           if [ -n "${{ vars.SECQA_INDEX_URL }}" ]; then
             ENV_VARS="${ENV_VARS},SECQA_INDEX_URL=${{ vars.SECQA_INDEX_URL }}"
           fi

@@ -103,8 +103,9 @@ limits of what *is* built.
 - **In-memory budgets.** `SECQA_DAILY_BUDGET_USD` and the per-request cap live in one process's
   memory: each Cloud Run / Container Apps instance has its own daily counter and it resets on
   restart. They are a demo cost fuse, not accounting.
-- **Rate limiting is per client IP** (first `X-Forwarded-For` hop behind the cloud proxies) and
-  also per instance.
+- **Rate limiting is per client IP** (the socket peer, or the `X-Forwarded-For` entry
+  `SECQA_TRUSTED_PROXY_HOPS` positions from the right behind the cloud proxies) and also per
+  instance. With the hop count unset behind a proxy every caller shares the proxy's bucket.
 - **One DuckDB handle per process.** The service runs one uvicorn worker; scale with instances.
   Concurrency is capped at 4 per instance because agent runs are CPU-bound for seconds.
 - **Cold start.** The `full` image (~1.6 GB with torch CPU and bge-small) takes 10–20 s to start

@@ -83,6 +83,10 @@ class Settings(BaseSettings):
     request_timeout_s: int = Field(default=90, ge=1)
     daily_budget_usd: float = Field(default=5.0, ge=0.0)
     rate_limit_per_min: int = Field(default=10, ge=1)
+    # Number of trusted proxies that APPEND the client address to X-Forwarded-For. 0 (default)
+    # keys the rate limit on the socket peer and ignores the header; 1 for Cloud Run / Container
+    # Apps, which append the real client after whatever the caller sent (see api.middleware).
+    trusted_proxy_hops: int = Field(default=0, ge=0)
 
     # cassettes / logging
     cassette_mode: CassetteMode = "off"

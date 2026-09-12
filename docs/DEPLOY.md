@@ -53,6 +53,7 @@ docker compose up --build                            # same, with a persistent /
 | `SECQA_MAX_COST_USD` | `0.25` | per-request cap (clients may lower it, not raise it) |
 | `SECQA_DAILY_BUDGET_USD` | `5.0` | per-instance, in-memory daily cap on paid calls |
 | `SECQA_RATE_LIMIT_PER_MIN` | `10` | slowapi limit per client IP on `/v1/*` |
+| `SECQA_TRUSTED_PROXY_HOPS` | `0` | proxies that append the client to `X-Forwarded-For`; `0` keys on the socket peer, `1` behind Cloud Run / Container Apps (both workflows set it) |
 | `SECQA_REQUEST_TIMEOUT_S` | `90` | agent wall clock |
 | `SECQA_LOG_JSON` | `true` | one JSON object per log line (`request_id`, provider, model, tokens, cost, latency) |
 | `SECQA_GIT_SHA` | build arg | reported by `/version` when `.git` is absent |

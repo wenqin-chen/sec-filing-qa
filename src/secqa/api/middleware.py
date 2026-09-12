@@ -16,8 +16,11 @@ every HTTP request it
 5. turns an exception no handler mapped into the generic 500 problem document (with the same
    headers) and re-raises it, so the server still logs it and test clients still see it.
 
-The slowapi :class:`~slowapi.Limiter` built by :func:`build_limiter` keys buckets by client IP,
-taking the first ``X-Forwarded-For`` hop when a proxy (Cloud Run, Container Apps) set it.
+The slowapi :class:`~slowapi.Limiter` built by :func:`build_limiter` keys buckets by client IP
+(:func:`client_ip`): the socket peer by default, or, when ``SECQA_TRUSTED_PROXY_HOPS`` is set,
+the ``X-Forwarded-For`` hop that many positions from the *right*. Cloud Run and Container Apps
+append the real client to whatever ``X-Forwarded-For`` the caller sent, so the leftmost hop is
+always caller-controlled and is never used.
 """
 
 from __future__ import annotations
@@ -123,17 +126,36 @@ def merge_server_timing(existing: str | None, metric: str) -> str:
     return f"{existing}, {metric}" if existing else metric
 
 
-def client_ip(request: Request) -> str:
-    """Rate-limit bucket key: first ``X-Forwarded-For`` hop, else the socket peer, else 'unknown'.
+def client_ip(request: Request, trusted_proxy_hops: int = 0) -> str:
+    """Rate-limit bucket key for ``request``.
 
-    ``X-Forwarded-For`` is spoofable by a direct caller; behind Cloud Run / Container Apps the
-    platform sets it, and rate limiting is an abuse brake here, not a security boundary.
+    With ``trusted_proxy_hops == 0`` (the default) the key is the socket peer: ``X-Forwarded-For``
+    is ignored because a direct caller can write anything into it. With ``trusted_proxy_hops =
+    n > 0`` the key is the ``X-Forwarded-For`` entry ``n`` positions from the right, i.e. the
+    address the outermost *trusted* proxy appended. Cloud Run and Azure Container Apps do not
+    replace an incoming ``X-Forwarded-For``; they append the real client to it, so behind either
+    the correct value is ``1`` and the leftmost entry (which the caller controls) is never used.
+    When the header is missing or has fewer than ``n`` entries the socket peer is used, and
+    ``'unknown'`` only when there is no peer either (some test transports).
+
+    Args:
+        request: The incoming request.
+        trusted_proxy_hops: Number of proxies in front of the service that append to
+            ``X-Forwarded-For`` (:attr:`Settings.trusted_proxy_hops`).
+
+    Raises:
+        ValueError: ``trusted_proxy_hops`` is negative.
     """
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        first = forwarded.split(",", 1)[0].strip()
-        if first:
-            return first
+    if trusted_proxy_hops < 0:
+        raise ValueError(f"trusted_proxy_hops must be >= 0, got {trusted_proxy_hops}")
+    if trusted_proxy_hops > 0:
+        forwarded = request.headers.get("x-forwarded-for")
+        if forwarded:
+            hops = [hop.strip() for hop in forwarded.split(",")]
+            if len(hops) >= trusted_proxy_hops:
+                chosen = hops[len(hops) - trusted_proxy_hops]
+                if chosen:
+                    return chosen
     if request.client is not None and request.client.host:
         return request.client.host
     return "unknown"
@@ -145,10 +167,18 @@ def rate_limit_string(settings: Settings) -> str:
 
 
 def build_limiter(settings: Settings) -> Limiter:
-    """A per-app, in-memory slowapi limiter (per instance; documented in SPEC section 8)."""
-    return Limiter(
-        key_func=client_ip, headers_enabled=True, enabled=settings.rate_limit_per_min > 0
-    )
+    """A per-app, in-memory slowapi limiter (per instance; documented in SPEC section 8).
+
+    Buckets are keyed by :func:`client_ip` with :attr:`Settings.trusted_proxy_hops` bound; the
+    wrapper is a plain function because slowapi inspects the key function's signature for a
+    ``request`` parameter.
+    """
+    hops = settings.trusted_proxy_hops
+
+    def key_func(request: Request) -> str:
+        return client_ip(request, trusted_proxy_hops=hops)
+
+    return Limiter(key_func=key_func, headers_enabled=True, enabled=settings.rate_limit_per_min > 0)
 
 
 __all__ = [

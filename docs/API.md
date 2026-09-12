@@ -21,8 +21,9 @@ The service reads only (ADR-07): there is no ingest endpoint and no way to write
 | GET | `/v1/filings/{doc_name}/pages/{page}` | one page's extracted text | yes |
 | POST | `/v1/xbrl/query` | guarded read-only SQL over XBRL tables | yes |
 
-Rate limit: `SECQA_RATE_LIMIT_PER_MIN` (default 10) requests per minute per client IP (first
-`X-Forwarded-For` hop behind a cloud proxy) on the `/v1/*` routes → 429.
+Rate limit: `SECQA_RATE_LIMIT_PER_MIN` (default 10) requests per minute per client IP (the socket
+peer, or the `X-Forwarded-For` entry `SECQA_TRUSTED_PROXY_HOPS` positions from the right behind a
+cloud proxy; the deployments set `1`) on the `/v1/*` routes → 429.
 
 ### `GET /healthz`
 
