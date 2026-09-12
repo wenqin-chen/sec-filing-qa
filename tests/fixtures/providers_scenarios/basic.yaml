@@ -1,0 +1,21 @@
+# Synthetic ScriptedProvider scenario used by tests/providers/test_scripted.py.
+model: scripted-basic
+turns:
+  - match: "net sales"
+    tool_calls:
+      - name: search_filings
+        arguments: {query: "fixture corp net sales 2023"}
+        id: call-search
+  - match: "chunk_id|chunk:"
+    tool_calls:
+      - name: final_answer
+        arguments:
+          answer: "Total net sales were $1,577 million in fiscal 2023."
+          value: 1577000000
+          unit: USD
+          citations:
+            - ref: "chunk:0123456789abcdef0123456789abcdef01234567"
+              quote: "Total net sales were $1,577 million in fiscal 2023"
+          abstain: false
+  - text: '{"label": "correct", "rationale": "matches the fixture answer"}'
+    usage: {input_tokens: 123, output_tokens: 45}

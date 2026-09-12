@@ -1,0 +1,27 @@
+{
+  "cik": 1234567,
+  "entityName": "Fixture Corp",
+  "facts": {
+    "us-gaap": {
+      "Revenues": {
+        "label": "Revenues",
+        "description": "Synthetic fixture value; not a real filing.",
+        "units": {
+          "USD": [
+            {
+              "start": "2023-01-01",
+              "end": "2023-12-31",
+              "val": 1577000000,
+              "accn": "0001234567-24-000010",
+              "fy": 2023,
+              "fp": "FY",
+              "form": "10-K",
+              "filed": "2024-02-15",
+              "frame": "CY2023"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

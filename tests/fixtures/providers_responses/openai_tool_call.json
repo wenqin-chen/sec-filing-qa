@@ -1,0 +1,35 @@
+{
+  "id": "chatcmpl-fixture-tool-call",
+  "object": "chat.completion",
+  "created": 1757548800,
+  "model": "gpt-5.5-2026-06-01",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": null,
+        "refusal": null,
+        "tool_calls": [
+          {
+            "id": "call_fixture_001",
+            "type": "function",
+            "function": {
+              "name": "search_filings",
+              "arguments": "{\"query\": \"FIXTURE CORP total net sales fiscal 2023\", \"ticker\": \"FIX\", \"k\": 5}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 1200,
+    "completion_tokens": 35,
+    "total_tokens": 1235,
+    "prompt_tokens_details": {"cached_tokens": 1000, "audio_tokens": 0},
+    "completion_tokens_details": {"reasoning_tokens": 10, "audio_tokens": 0}
+  },
+  "system_fingerprint": "fp_fixture"
+}

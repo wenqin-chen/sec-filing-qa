@@ -1,0 +1,24 @@
+{
+  "id": "chatcmpl-fixture-json",
+  "object": "chat.completion",
+  "created": 1757548801,
+  "model": "gpt-5.5-2026-06-01",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"answer\": \"Total net sales were $1,577 million in fiscal 2023.\", \"value\": 1577000000, \"unit\": \"USD\", \"citations\": [{\"ref\": \"chunk:0123456789abcdef0123456789abcdef01234567\", \"quote\": \"Total net sales were $1,577 million in fiscal 2023\"}], \"abstain\": false}",
+        "refusal": null,
+        "tool_calls": null
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 800,
+    "completion_tokens": 60,
+    "total_tokens": 860,
+    "prompt_tokens_details": {"cached_tokens": 0}
+  }
+}

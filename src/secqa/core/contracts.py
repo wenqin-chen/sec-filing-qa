@@ -205,7 +205,13 @@ class Message(Frozen):
 
 
 class Usage(Frozen):
-    """Token usage of one or more LLM calls; ``+`` sums component-wise."""
+    """Token usage of one or more LLM calls; ``+`` sums component-wise.
+
+    ``input_tokens`` counts the *uncached* prompt tokens (Anthropic's native semantics; the OpenAI
+    translator subtracts cached tokens from ``prompt_tokens``), so the total prompt size is
+    ``input_tokens + cache_read_tokens + cache_write_tokens`` and cached tokens are never billed
+    twice by ``PriceTable``. Budget guards on prompt size must sum the three fields.
+    """
 
     input_tokens: int = 0
     output_tokens: int = 0
@@ -262,7 +268,11 @@ class LLMProvider(Protocol):
 
 @runtime_checkable
 class Embedder(Protocol):
-    """Text -> float32 array of shape (n, dim), L2-normalised."""
+    """Text -> float32 array of shape (n, dim), L2-normalised.
+
+    Blank (empty / whitespace-only) texts embed to an all-zero row rather than a unit vector, for
+    every backend; callers must not assume every row has norm 1.
+    """
 
     name: str
     dim: int

@@ -1,0 +1,19 @@
+{
+  "id": "chatcmpl-fixture-refusal",
+  "object": "chat.completion",
+  "created": 1757548802,
+  "model": "gpt-5.5-2026-06-01",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": null,
+        "refusal": "I'm sorry, but I can't help with that request.",
+        "tool_calls": null
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {"prompt_tokens": 50, "completion_tokens": 12, "total_tokens": 62}
+}

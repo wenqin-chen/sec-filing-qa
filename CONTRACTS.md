@@ -148,6 +148,7 @@ class Message(Frozen):
 
 
 class Usage(Frozen):
+    # input_tokens = UNCACHED prompt tokens; total prompt = input + cache_read + cache_write
     input_tokens: int = 0
     output_tokens: int = 0
     cache_read_tokens: int = 0
@@ -210,7 +211,7 @@ class Embedder(Protocol):
         kind: Literal["query", "passage"] = "passage",
     ) -> np.ndarray: ...
 
-    # float32, shape (n, dim), L2-normalised
+    # float32, shape (n, dim), L2-normalised; blank texts embed to an all-zero row (not unit norm)
 
 
 # ---------- answers ----------
@@ -399,7 +400,7 @@ class RunSummary(Frozen):
     started_at: datetime
     finished_at: datetime
 ```
-Cross-module rules: (1) tool results of one agent step go in ONE `Message(role='tool')`; (2) `Answer.citations[*].snippet` is always store-sourced; (3) providers never emit `temperature` to Anthropic Opus 5 / Sonnet 5 and use `thinking={'type':'adaptive'}` + `output_config.effort`; (4) `page_num` is 1-based everywhere; (5) EvalRecord never contains question/answer/evidence text; (6) every LLM call is appended to `trace` with usage; (7) errors: `ProviderError(retryable)`, `SqlRejected`, `CalcRejected`, `IndexMismatch`, `CassetteMiss`, `ConfigError` all live in `secqa.core.errors`.
+Cross-module rules: (1) tool results of one agent step go in ONE `Message(role='tool')`; (2) `Answer.citations[*].snippet` is always store-sourced; (3) providers never emit `temperature` to Anthropic Opus 5 / Sonnet 5 and use `thinking={'type':'adaptive'}` + `output_config.effort`; (4) `page_num` is 1-based everywhere; (5) EvalRecord never contains question/answer/evidence text; (6) every LLM call is appended to `trace` with usage; (7) errors: `ProviderError(retryable)`, `SqlRejected`, `CalcRejected`, `IndexMismatch`, `CassetteMiss`, `ConfigError` all live in `secqa.core.errors` (module-specific errors such as `EdgarError` live in their module); (8) `CitationVerifier.verify` maps are keyed by bare `chunk_id` for `chunks` and by `FactRow.ref` (the full `xbrl:<tag>|FY<fy>|<accn>` string) for `facts` — rag and agent must key `seen_chunks` / `seen_facts` that way; (9) the DuckDB view `financials` is owned by `secqa.xbrl.create_financials_view` (CREATE OR REPLACE); the store's schema only creates a baseline `IF NOT EXISTS` so the name always resolves, and whoever writes `xbrl_facts` directly must call `store.set_manifest(n_facts=...)` (or `rebuild_fts()`) so the manifest count is current; (10) `DuckDBStore.readonly_connection()` returns `secqa.store.ReadOnlyConnection` (execute/fetch*/interrupt/close; one SELECT-type statement per call inside a READ ONLY transaction), not a raw `duckdb.DuckDBPyConnection` — DuckDB cannot open one file read-write and read-only in one process.
 
 ## Offline mode
 

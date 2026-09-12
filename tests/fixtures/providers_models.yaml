@@ -1,0 +1,10 @@
+# Synthetic price table for tests/providers/test_pricing.py (USD per 1M tokens; NOT real prices).
+as_of: 2026-09-11
+models:
+  anthropic:
+    claude-test-large: {input: 5.0, cached_input: 0.5, output: 25.0}
+    claude-test-small: {input: 2.0, cached_input: 0.2, output: 10.0, cache_write: 2.5}
+  openai:
+    gpt-test: {input: 4.0, cached_input: 0.4, output: 16.0}
+    embed-test: {input: 0.02}
+  "openai:flat-key-model": {input: 1.0, output: 2.0}

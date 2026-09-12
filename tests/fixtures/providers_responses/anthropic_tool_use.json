@@ -1,0 +1,26 @@
+{
+  "id": "msg_fixture_tool_use",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-opus-5",
+  "content": [
+    {"type": "thinking", "thinking": "", "signature": "fixture-signature-not-real"},
+    {"type": "text", "text": "I will look up the filing first."},
+    {
+      "type": "tool_use",
+      "id": "toolu_fixture_001",
+      "name": "search_filings",
+      "input": {"query": "FIXTURE CORP total net sales fiscal 2023", "ticker": "FIX", "k": 5}
+    }
+  ],
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "stop_details": null,
+  "usage": {
+    "input_tokens": 200,
+    "output_tokens": 80,
+    "cache_creation_input_tokens": 900,
+    "cache_read_input_tokens": 100,
+    "service_tier": "standard"
+  }
+}

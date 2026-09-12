@@ -1,0 +1,22 @@
+{
+  "id": "msg_fixture_json",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-opus-5",
+  "content": [
+    {"type": "thinking", "thinking": "", "signature": "fixture-signature-not-real"},
+    {
+      "type": "text",
+      "text": "{\"answer\": \"Total net sales were $1,577 million in fiscal 2023.\", \"value\": 1577000000, \"unit\": \"USD\", \"citations\": [{\"ref\": \"chunk:0123456789abcdef0123456789abcdef01234567\", \"quote\": \"Total net sales were $1,577 million in fiscal 2023\"}], \"abstain\": false}"
+    }
+  ],
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "stop_details": null,
+  "usage": {
+    "input_tokens": 700,
+    "output_tokens": 70,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0
+  }
+}

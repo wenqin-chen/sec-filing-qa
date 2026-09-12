@@ -21,7 +21,8 @@ from secqa.core.errors import ConfigError
 CassetteMode = Literal["off", "record", "replay"]
 
 # Deliberately simple: SEC only asks for "Name email"; we check that an email-shaped token exists.
-_EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+# Public so the EDGAR client validates a User-Agent with the same rule.
+EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 
 # Provider spec prefixes that need no vendor key (offline / deterministic providers).
 _KEYLESS_PROVIDER_PREFIXES = ("mock", "scripted")
@@ -92,7 +93,7 @@ class Settings(BaseSettings):
         value = value.strip()
         if not value:
             return None
-        if not _EMAIL_RE.search(value):
+        if not EMAIL_RE.search(value):
             raise ValueError(
                 "SEC_USER_AGENT must contain a contact email, e.g. 'Jane Doe jane@example.com'"
             )
