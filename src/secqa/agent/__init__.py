@@ -7,7 +7,14 @@ that turns a question into an :class:`~secqa.core.contracts.Answer` with ``mode=
 """
 
 from secqa.agent.calc import safe_calculate
-from secqa.agent.loop import AGENT_SYSTEM, AgentLoop, agent_prompt_hash, load_agent_prompt
+from secqa.agent.loop import (
+    AGENT_SYSTEM,
+    COST_ABORT_PREFIX,
+    WALL_CLOCK_ABORT_PREFIX,
+    AgentLoop,
+    agent_prompt_hash,
+    load_agent_prompt,
+)
 from secqa.agent.runtime import ToolRuntime
 from secqa.agent.tools import (
     FINAL_ANSWER,
@@ -21,10 +28,12 @@ from secqa.agent.tools import (
 
 __all__ = [
     "AGENT_SYSTEM",
+    "COST_ABORT_PREFIX",
     "FINAL_ANSWER",
     "FINAL_ANSWER_SCHEMA",
     "TOOLS",
     "TOOL_NAMES",
+    "WALL_CLOCK_ABORT_PREFIX",
     "AgentLoop",
     "FinalAnswer",
     "ToolRuntime",

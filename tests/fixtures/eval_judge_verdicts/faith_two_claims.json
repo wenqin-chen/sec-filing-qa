@@ -1,0 +1,5 @@
+{"description": "Synthetic faithfulness reply: two claims, one supported.",
+ "text": "{\"claims\": [{\"claim\": \"Net sales were $1,577 million\", \"supported\": true}, {\"claim\": \"Net sales grew 20%\", \"supported\": false}]}",
+ "parsed": null,
+ "expected_claims": 2,
+ "expected_supported": 1}

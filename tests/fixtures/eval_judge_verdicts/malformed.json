@@ -1,0 +1,4 @@
+{"description": "Synthetic judge reply that is not a JSON object; must raise JudgeParseError, never guess.",
+ "text": "I think it is probably right.",
+ "parsed": null,
+ "expected_label": null}

@@ -1,0 +1,12 @@
+# Retrieval-only row (no answering model, no keys): provider mock:abstain records page_recall@k,
+# evidence overlap recall and MRR over the FinanceBench index built with the local embedder.
+name: retrieval_bm25
+mode: rag
+provider: mock:abstain
+embedder: local
+strategy: bm25
+k: 20
+doc_filter: false
+judge: rule
+max_cost_usd_per_q: 0.0
+cassette_mode: "off"

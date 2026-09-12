@@ -1,0 +1,4 @@
+{"description": "Synthetic judge reply as plain JSON text.",
+ "text": "{\"label\": \"abstain\", \"rationale\": \"The prediction says INSUFFICIENT EVIDENCE.\"}",
+ "parsed": null,
+ "expected_label": "abstain"}

@@ -1,0 +1,15 @@
+# CI smoke row: the agent loop (search_filings -> final_answer) with the mock provider.
+name: agent_mock
+mode: agent
+provider: mock
+embedder: hashing
+strategy: hybrid
+k: 4
+doc_filter: false
+judge: rule
+effort: medium
+max_cost_usd_per_q: 0.0
+cassette_mode: "off"
+questions_path: tests/fixtures/fb_mini.jsonl
+index_path: data/fixture_index.duckdb
+fixture_pages_path: tests/fixtures/eval_fixture_pages.json

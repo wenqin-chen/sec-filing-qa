@@ -90,6 +90,11 @@ DEFAULT_MAX_TOKENS = 2048
 IDENTICAL_CALL_LIMIT = 3
 FINAL_ANSWER_ATTEMPTS = 2
 
+WALL_CLOCK_ABORT_PREFIX = "wall clock"
+COST_ABORT_PREFIX = "projected cost"
+"""The two ``budget`` abort reasons callers tell apart (the API maps them to 504 / 402); each
+is the leading text of the final ``verify`` :class:`TraceStep`'s ``error`` for that abort."""
+
 NUDGE_PROMPT = (
     "Your last message contained no tool call and was not a valid final answer ({reason}). "
     "Either call a tool to gather evidence or call final_answer with your answer."
@@ -414,14 +419,14 @@ class AgentLoop:
             return "max_steps"
         elapsed = time.perf_counter() - state.started
         if elapsed > self.wall_clock_s:
-            return f"wall clock {elapsed:.1f}s exceeded {self.wall_clock_s:g}s"
+            return f"{WALL_CLOCK_ABORT_PREFIX} {elapsed:.1f}s exceeded {self.wall_clock_s:g}s"
         if state.prompt_tokens > self.max_input_tokens:
             return (
                 f"cumulative prompt tokens {state.prompt_tokens} exceeded {self.max_input_tokens}"
             )
         projected = state.cost_usd + state.last_call_cost
         if state.llm_calls > 0 and projected > self.max_cost_usd:
-            return f"projected cost ${projected:.4f} exceeds cap ${self.max_cost_usd:.2f}"
+            return f"{COST_ABORT_PREFIX} ${projected:.4f} exceeds cap ${self.max_cost_usd:.2f}"
         return None
 
     def _abort(self, state: _RunState, terminated_by: Terminated, reason: str) -> None:
@@ -588,6 +593,7 @@ def _check_positive_int(name: str, value: int) -> None:
 
 __all__ = [
     "AGENT_SYSTEM",
+    "COST_ABORT_PREFIX",
     "DEFAULT_EFFORT",
     "DEFAULT_MAX_COST_USD",
     "DEFAULT_MAX_INPUT_TOKENS",
@@ -598,6 +604,7 @@ __all__ = [
     "FINAL_PROMPT",
     "NUDGE_PROMPT",
     "PROMPTS_DIR",
+    "WALL_CLOCK_ABORT_PREFIX",
     "AgentLoop",
     "agent_prompt_hash",
     "build_agent_prompt",

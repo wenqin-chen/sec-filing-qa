@@ -1,0 +1,17 @@
+# Human correctness labels for the judge-vs-human agreement check (SPEC section 7).
+#
+# Protocol
+# 1. Sample 30 questions stratified by question_type from ONE headline run (record the run_id
+#    below); the sample is drawn with `seed 0` over the sorted financebench_ids of each type.
+# 2. The annotator sees exactly what the LLM judge sees: question, gold answer, justification and
+#    the prediction (text, value, unit, abstain flag). Not the judge's verdict.
+# 3. Labels use the judge's own rules (prompts/judge_correctness.md): abstain / correct / incorrect;
+#    1% numeric tolerance, unit-scale differences allowed, partial multi-part answers incorrect.
+# 4. One row per (run_id, financebench_id). Never paste question or answer text here: this file is
+#    committed and FinanceBench is CC-BY-NC-4.0. `notes` holds the annotator's reason in their own
+#    words without quoting the dataset.
+# 5. `secqa.eval.human_agreement(pred_path, labels_csv)` joins on financebench_id and reports
+#    Cohen's kappa; kappa < 0.6 marks accuracy cells "provisional" in RESULTS.md.
+#
+# Lines starting with '#' are comments; the header row follows.
+run_id,financebench_id,label,annotator,labelled_at,notes

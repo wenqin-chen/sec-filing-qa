@@ -1,0 +1,4 @@
+{"description": "Synthetic judge reply where the provider already decoded the JSON (structured output).",
+ "text": "{\"label\": \"correct\", \"rationale\": \"Same figure within rounding.\"}",
+ "parsed": {"label": "correct", "rationale": "Same figure within rounding."},
+ "expected_label": "correct"}

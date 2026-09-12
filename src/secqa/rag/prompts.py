@@ -41,7 +41,16 @@ CLOSED_BOOK_SYSTEM = "closed_book_system.md"
 ORACLE_SYSTEM = "oracle_system.md"
 AGENT_SYSTEM = "agent_system.md"
 """The agent loop's system prompt; owned by :mod:`secqa.agent`, hashed here with the rest."""
-PROMPT_NAMES: tuple[str, ...] = (RAG_SYSTEM, CLOSED_BOOK_SYSTEM, ORACLE_SYSTEM, AGENT_SYSTEM)
+JUDGE_CORRECTNESS_SYSTEM = "judge_correctness.md"
+JUDGE_FAITHFULNESS_SYSTEM = "judge_faithfulness.md"
+"""The evaluation judges' system prompts; owned by :mod:`secqa.eval.judge`, hashed here too."""
+ANSWER_PROMPT_NAMES: tuple[str, ...] = (RAG_SYSTEM, CLOSED_BOOK_SYSTEM, ORACLE_SYSTEM, AGENT_SYSTEM)
+"""The prompts that *answer* questions (they all state the abstention rule and the guardrails)."""
+PROMPT_NAMES: tuple[str, ...] = (
+    *ANSWER_PROMPT_NAMES,
+    JUDGE_CORRECTNESS_SYSTEM,
+    JUDGE_FAITHFULNESS_SYSTEM,
+)
 """Every prompt file under :data:`PROMPTS_DIR`; :func:`prompt_hashes` must cover all of them."""
 
 PASSAGES_HEADER = "Passages (cite by ref; quote verbatim):"
@@ -77,7 +86,7 @@ def prompt_hash(name: str) -> str:
 def prompt_hashes() -> dict[str, str]:
     """``{file name: sha256}`` for every ``*.md`` under :data:`PROMPTS_DIR`, sorted by name.
 
-    Reads the files on every call (four small files) so a test that edits a prompt on disk sees
+    Reads the files on every call (six small files) so a test that edits a prompt on disk sees
     the new hash without clearing caches.
     """
     files = sorted(PROMPTS_DIR.glob("*.md"))
@@ -173,7 +182,10 @@ def _one_line(text: str) -> str:
 
 __all__ = [
     "AGENT_SYSTEM",
+    "ANSWER_PROMPT_NAMES",
     "CLOSED_BOOK_SYSTEM",
+    "JUDGE_CORRECTNESS_SYSTEM",
+    "JUDGE_FAITHFULNESS_SYSTEM",
     "ORACLE_SYSTEM",
     "PASSAGES_HEADER",
     "PROMPTS_DIR",

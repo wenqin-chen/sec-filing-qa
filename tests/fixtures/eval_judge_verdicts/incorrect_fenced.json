@@ -1,0 +1,4 @@
+{"description": "Synthetic judge reply as fenced JSON text (no provider-side parsing).",
+ "text": "```json\n{\"label\": \"INCORRECT\", \"rationale\": \"Different line item.\"}\n```",
+ "parsed": null,
+ "expected_label": "incorrect"}

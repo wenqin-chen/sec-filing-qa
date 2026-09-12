@@ -11,7 +11,14 @@ from secqa.core.contracts import Chunk, Message, RetrievalFilters
 from secqa.core.errors import ConfigError
 from secqa.core.ids import chunk_id, sha256_hex
 from secqa.providers.mock_provider import extract_passages, extract_question
-from secqa.rag import PROMPT_NAMES, PROMPTS_DIR, build_user_prompt, load_prompt, prompt_hashes
+from secqa.rag import (
+    ANSWER_PROMPT_NAMES,
+    PROMPT_NAMES,
+    PROMPTS_DIR,
+    build_user_prompt,
+    load_prompt,
+    prompt_hashes,
+)
 from secqa.rag.prompts import (
     PASSAGES_HEADER,
     SECTION_MAX_CHARS,
@@ -31,8 +38,9 @@ SNAPSHOT = Path(__file__).resolve().parent.parent / "fixtures" / "rag_prompt_has
 def test_every_prompt_file_exists_and_is_non_empty() -> None:
     assert PROMPTS_DIR.is_dir()
     for name in PROMPT_NAMES:
+        assert load_prompt(name).strip()
+    for name in ANSWER_PROMPT_NAMES:
         text = load_prompt(name)
-        assert text.strip()
         assert "INSUFFICIENT EVIDENCE" in text
         assert '"abstain"' in text
 

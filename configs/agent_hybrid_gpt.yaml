@@ -1,0 +1,14 @@
+# v0.1 matrix row (SPEC 7). Runs resume; cassettes recorded under cassettes/<run_id>/.
+name: agent_hybrid_gpt
+mode: agent
+provider: openai:gpt-5.5
+embedder: local
+strategy: hybrid
+k: 8
+doc_filter: false
+judge: anthropic:claude-sonnet-5
+effort: medium
+max_cost_usd_per_q: 0.5
+max_total_cost_usd: 40.0
+seed: 0
+cassette_mode: record
