@@ -49,6 +49,8 @@ def test_help_lists_every_spec_command(invoke: Invoke) -> None:
     assert result.exit_code == 0
     for command in ("doctor", "data", "ingest", "index", "ask", "eval", "rescore", "report"):
         assert command in result.stdout
+    for command in ("judge-swap", "human-agreement"):  # SPEC 7 judge-agreement checks
+        assert command in result.stdout
     for command in ("serve", "export"):
         assert command in result.stdout
     for group, subcommands in (
@@ -374,6 +376,89 @@ def test_eval_mock_limit_writes_summary_and_rescore_replays(
     assert after["rescored_at"] and after["rescore_judge"] == "rule"
     bad = invoke("-q", "rescore", "--run", str(tmp_path / "no-such-run"))
     assert bad.exit_code == 1 and "run config not found" in bad.stderr
+
+
+def test_judge_swap_and_human_agreement_commands(
+    invoke: Invoke, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """SPEC 7: the judge-swap kappa and the judge-vs-human kappa each have a CLI entry point
+    that writes the JSON `secqa report` reads, without touching the run's own verdicts."""
+    monkeypatch.chdir(REPO_ROOT)
+    results = tmp_path / "results"
+    fixture_db = tmp_path / "fixture.duckdb"
+    result = invoke(
+        "-q",
+        "eval",
+        "--config",
+        str(CONFIGS_DIR / "rag_mock.yaml"),
+        "--limit",
+        "3",
+        "--db",
+        str(fixture_db),
+        "--out",
+        str(results),
+    )
+    assert result.exit_code == 0, result.output
+    run_dir = next((results / "rag_mock").iterdir())
+    predictions_before = (run_dir / "predictions.jsonl").read_bytes()
+    run_id = json.loads((run_dir / "config.json").read_text(encoding="utf-8"))["run_id"]
+
+    # judge-swap: a scripted second judge that calls every answer correct
+    scenario = tmp_path / "swap_judge.yaml"
+    scenario.write_text(
+        "model: swap-judge\nturns:\n"
+        + 3 * '  - text: \'{"label": "correct", "rationale": "agrees"}\'\n',
+        encoding="utf-8",
+    )
+    cassettes = tmp_path / "swap_cassettes"
+    swapped = invoke(
+        "-q",
+        "judge-swap",
+        "--run",
+        str(run_dir),
+        "--judge",
+        f"scripted:{scenario}",
+        "--cassette-dir",
+        str(cassettes),
+        "--json",
+    )
+    assert swapped.exit_code == 0, swapped.output
+    report_path = run_dir / "judge_swap_scripted_swap-judge.json"
+    assert report_path.is_file()
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["n"] == 3 and report["name_b"] == "scripted:swap-judge"
+    assert report["run_id"] == run_id and report["judge_cost_usd"] == 0.0
+    printed = json.loads(swapped.stdout)
+    assert printed["written"] == str(report_path) and printed["kappa"] == report["kappa"]
+    assert len(list(cassettes.glob("*.json"))) == 3  # the swap judge's calls are recorded
+    # unlike `rescore --judge`, the run's own verdicts are untouched
+    assert (run_dir / "predictions.jsonl").read_bytes() == predictions_before
+    assert not (run_dir / "predictions.previous.jsonl").exists()
+    refused = invoke("-q", "judge-swap", "--run", str(run_dir), "--judge", "mock")
+    assert refused.exit_code == 1 and "fabricate" in refused.stderr
+    missing = invoke("-q", "judge-swap", "--run", str(tmp_path / "no-such-run"))
+    assert missing.exit_code == 1 and "run config not found" in missing.stderr
+
+    # human-agreement: two labelled ids of this run, one row of another run (ignored)
+    labels = tmp_path / "labels.csv"
+    labels.write_text(
+        "# protocol comment\n"
+        "run_id,financebench_id,label,annotator,labelled_at,notes\n"
+        f"{run_id},fb_mini_001,correct,wc,2026-09-11,\n"
+        f"{run_id},fb_mini_002,incorrect,wc,2026-09-11,\n"
+        "other_run,fb_mini_003,incorrect,wc,2026-09-11,ignored\n",
+        encoding="utf-8",
+    )
+    human = invoke("-q", "human-agreement", "--run", str(run_dir), "--labels", str(labels))
+    assert human.exit_code == 0, human.output
+    for key in ("kappa", "agreement", "confusion", "disagreements", "written"):
+        assert key in human.stdout
+    payload = json.loads((run_dir / "human_agreement.json").read_text(encoding="utf-8"))
+    assert payload["n"] == 2 and payload["name_b"] == "human" and payload["run_id"] == run_id
+    assert payload["computed_at"] and "fb_mini_001" not in payload["disagreements"]
+    # the shipped labels file is empty until the author labels a real run: a clean error
+    empty = invoke("-q", "human-agreement", "--run", str(run_dir))
+    assert empty.exit_code == 1 and "no human label" in empty.stderr
 
 
 def test_eval_run_id_writes_exactly_that_directory(

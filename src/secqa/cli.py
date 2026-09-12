@@ -9,6 +9,8 @@ implement; author reviews, labels, deploys"):
 * ``index pack | fetch | manifest`` -- the ``index-*.tar.zst`` release asset and its provenance.
 * ``ask`` -- one question through rag / agent / closed_book with verified citations.
 * ``eval`` / ``rescore`` / ``report`` -- the FinanceBench harness and ``RESULTS.md``.
+* ``judge-swap`` / ``human-agreement`` -- the judge-agreement checks of SPEC 7 (Cohen's
+  kappa against a second judge and against the human-labelled subset).
 * ``serve`` -- uvicorn over :func:`secqa.api.app.create_app`.
 * ``export`` -- Parquet copies of every table.
 
@@ -56,6 +58,16 @@ from secqa.eval.financebench import (
     load_financebench,
     load_questions_jsonl,
 )
+from secqa.eval.judge import (
+    DEFAULT_HUMAN_LABELS,
+    HUMAN_AGREEMENT_NAME,
+    PROVISIONAL_KAPPA,
+    AgreementReport,
+    human_agreement,
+    judge_swap,
+    judge_swap_report_path,
+)
+from secqa.eval.metrics import PREDICTIONS_NAME
 from secqa.eval.report import render_results_md
 from secqa.eval.rescore import read_run_config, rescore
 from secqa.eval.runner import (
@@ -75,7 +87,7 @@ from secqa.indexing import (
     load_xbrl_for_companies,
     pack_index,
 )
-from secqa.providers import DEFAULT_MODELS_YAML, PriceTable, get_provider
+from secqa.providers import DEFAULT_MODELS_YAML, PriceTable, ReplayCacheProvider, get_provider
 from secqa.store import DuckDBStore, resolve_git_sha
 
 log = get_logger(__name__)
@@ -1221,8 +1233,10 @@ def rescore_cmd(
 ) -> None:
     """Recompute a run's predictions, metrics and summary from its cassettes (no keys needed).
 
-    With --judge the run is re-judged by that model (new cassettes recorded in place); the
-    previous predictions are kept as predictions.previous.jsonl.
+    With --judge the run is re-judged by that model (new cassettes recorded in place) and its
+    verdicts are REPLACED; the previous predictions are kept as predictions.previous.jsonl.
+    To compare a second judge against the run without replacing anything (the SPEC 7 kappa),
+    use `secqa judge-swap`.
     """
     settings = resolve_settings(duckdb_path=db)
     raw = read_run_config(run)
@@ -1238,6 +1252,104 @@ def rescore_cmd(
         if store is not None:
             store.close()
     _print_summary(run)
+
+
+def _rate(value: float | None) -> str:
+    return "-" if value is None else f"{value:.3f}"
+
+
+def _print_agreement(title: str, report: AgreementReport, written: Path, *, as_json: bool) -> None:
+    """Kappa, agreement, confusion table and disagreeing ids of an :class:`AgreementReport`."""
+    if as_json:
+        echo_json({**report.model_dump(mode="json"), "written": str(written)})
+        return
+    confusion = "; ".join(
+        f"{a}->{b}: {n}" for a, row in report.confusion.items() for b, n in row.items()
+    )
+    rows: list[tuple[str, Any]] = [
+        ("run", report.run_id or "-"),
+        ("labels", f"{report.name_a} vs {report.name_b}"),
+        ("n", report.n),
+        ("agreement", _rate(report.agreement)),
+        ("kappa", _rate(report.kappa)),
+        ("provisional", f"{report.provisional} (threshold {PROVISIONAL_KAPPA:.1f})"),
+        ("confusion (a->b)", confusion or "-"),
+        ("disagreements", f"{len(report.disagreements)}: {', '.join(report.disagreements) or '-'}"),
+    ]
+    if report.judge_cost_usd:
+        rows.append(("judge cost", f"${report.judge_cost_usd:.4f}"))
+    rows.append(("written", written))
+    print_kv(title, rows)
+
+
+@app.command("judge-swap")
+@guarded
+def judge_swap_cmd(
+    run: Annotated[Path, typer.Option("--run", help="results/<config>/<run_id>")],
+    judge: Annotated[
+        str, typer.Option("--judge", help="Second judge, e.g. openai:gpt-5.4-mini.")
+    ] = "openai:gpt-5.4-mini",
+    questions: Annotated[
+        Path | None,
+        typer.Option("--questions", help="JSONL questions (default: run config / dataset)."),
+    ] = None,
+    cache_dir: Annotated[Path, typer.Option("--cache-dir")] = DEFAULT_CACHE_DIR,
+    cassette_dir: Annotated[
+        Path | None,
+        typer.Option("--cassette-dir", help="Record the swap judge here (default: run's)."),
+    ] = None,
+    prices: Annotated[Path, typer.Option("--prices", help="models.yaml")] = DEFAULT_MODELS_YAML,
+    as_json: Annotated[bool, typer.Option("--json", help="Print the report as JSON.")] = False,
+) -> None:
+    """Re-judge a finished run with a second judge and report Cohen's kappa (SPEC 7).
+
+    The run's own verdicts are left untouched (unlike `secqa rescore --judge`, which replaces
+    them): the swap judge's labels are compared with the run's effective labels and the report
+    is written as judge_swap_<provider>_<model>.json next to predictions.jsonl, where
+    `secqa report` picks it up. The swap judge's calls are recorded into the run's cassette
+    directory so the kappa can be regenerated without keys.
+    """
+    if provider_vendor(judge) == "mock":
+        raise ConfigError("judge 'mock' would fabricate verdicts; use a scripted or real judge")
+    settings = resolve_settings()
+    raw = read_run_config(run)
+    cfg = EvalConfig.model_validate(raw["config"])
+    question_list = load_questions(questions or cfg.questions_path, cache_dir, DEFAULT_SPLIT, None)
+    provider = get_provider(judge, settings)
+    cassettes = (
+        cassette_dir
+        if cassette_dir is not None
+        else (Path(raw["cassettes"]) if raw.get("cassettes") else None)
+    )
+    if cassettes is not None:
+        provider = ReplayCacheProvider(provider, cache_dir=cassettes, mode="record")
+    report = judge_swap(
+        run / PREDICTIONS_NAME, provider, question_list, prices=PriceTable.load(prices)
+    )
+    _print_agreement(
+        "Judge swap",
+        report,
+        judge_swap_report_path(run / PREDICTIONS_NAME, provider),
+        as_json=as_json,
+    )
+
+
+@app.command("human-agreement")
+@guarded
+def human_agreement_cmd(
+    run: Annotated[Path, typer.Option("--run", help="results/<config>/<run_id>")],
+    labels: Annotated[
+        Path, typer.Option("--labels", help="human_labels.csv (protocol in its header).")
+    ] = DEFAULT_HUMAN_LABELS,
+    as_json: Annotated[bool, typer.Option("--json", help="Print the report as JSON.")] = False,
+) -> None:
+    """Judge-vs-human Cohen's kappa for a run from the labelled subset (SPEC 7).
+
+    Writes human_agreement.json next to predictions.jsonl; `secqa report` clears the
+    "provisional" mark on the run's accuracy cells when kappa >= 0.6.
+    """
+    report = human_agreement(run / PREDICTIONS_NAME, labels)
+    _print_agreement("Human agreement", report, run / HUMAN_AGREEMENT_NAME, as_json=as_json)
 
 
 @app.command()

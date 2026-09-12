@@ -624,14 +624,20 @@ def judge_swap(
         judge_cost_usd=cost,
         run_id=records[0].run_id if records else "",
     )
-    safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", f"{judge.provider}_{judge.model}")
-    _write_json(pred_path.parent / f"judge_swap_{safe}.json", report.model_dump(mode="json"))
+    _write_json(judge_swap_report_path(pred_path, judge), report.model_dump(mode="json"))
     log.info("judge_swap", n=report.n, kappa=report.kappa, agreement=report.agreement)
     return report
 
 
+def judge_swap_report_path(pred_path: Path, judge: LLMProvider) -> Path:
+    """``judge_swap_<provider>_<model>.json`` next to ``pred_path`` (the report renderer's glob)."""
+    safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", f"{judge.provider}_{judge.model}")
+    return Path(pred_path).parent / f"judge_swap_{safe}.json"
+
+
 HUMAN_LABEL_COLUMNS: tuple[str, ...] = ("financebench_id", "label")
 HUMAN_AGREEMENT_NAME = "human_agreement.json"
+DEFAULT_HUMAN_LABELS = Path(__file__).with_name("human_labels.csv")
 
 
 def read_human_labels(labels_csv: Path) -> list[dict[str, str]]:
@@ -697,6 +703,7 @@ def human_agreement(pred_path: Path, labels_csv: Path) -> AgreementReport:
 
 
 __all__ = [
+    "DEFAULT_HUMAN_LABELS",
     "FAITH_SCHEMA",
     "HUMAN_AGREEMENT_NAME",
     "JUDGE_CORRECTNESS",
@@ -724,6 +731,7 @@ __all__ = [
     "judge_faithfulness",
     "judge_prompt_hashes",
     "judge_swap",
+    "judge_swap_report_path",
     "load_judge_prompt",
     "make_judge",
     "parse_correctness",

@@ -132,11 +132,18 @@ and the class (no dataset text).
   re-judged from cassettes (`secqa rescore --judge ...`).
 - **Judge swap**: the two headline rows are re-scored with `openai:gpt-5.4-mini`; Cohen's kappa
   between the two judges is reported.
+  `secqa judge-swap --run results/<config>/<run_id> --judge openai:gpt-5.4-mini` re-judges every
+  scored record, leaves the run's own verdicts untouched (unlike `secqa rescore --judge`, which
+  *replaces* them), records the swap judge's calls into the run's cassette directory and writes
+  `judge_swap_<provider>_<model>.json` next to `predictions.jsonl` (kappa, agreement, confusion
+  table, disagreeing ids, judge cost).
 - **Human agreement**: a 30-question stratified sample (`scripts/label_judge_sample.py`, seed 0,
   proportional by `question_type`) is labelled by the author following the judge's own rules
-  (`src/secqa/eval/human_labels.csv`, protocol in the header); `human_agreement` reports Cohen's
-  kappa. **Kappa < 0.6 marks the accuracy cells of that run "provisional" (†)** in the report;
-  the mark also appears when no agreement file exists.
+  (`src/secqa/eval/human_labels.csv`, protocol in the header);
+  `secqa human-agreement --run results/<config>/<run_id> [--labels <csv>]` reports Cohen's kappa
+  and writes `human_agreement.json` next to `predictions.jsonl`. **Kappa < 0.6 marks the
+  accuracy cells of that run "provisional" (†)** in the report; the mark also appears when no
+  agreement file exists.
 - **Rule judge** (`judge: rule`): abstention detection plus `numeric_match`; used only by CI /
   mock rows and retrieval rows. It never guesses a free-text verdict.
 - Parsing: the provider's structured `parsed` JSON first, then JSON in the text (fences
@@ -156,7 +163,9 @@ results/<config>/<run_id>/
   config.json        the EvalConfig, run id, n, git SHA, index SHA, provider/model, judge, prices as_of, cassette dir
   predictions.jsonl  one EvalRecord per question (ids only, see docs/DATA.md)
   summary.json       RunSummary: metrics, ci95, by_question_type, failures, disagreements, latency, cost, provenance
-  human_agreement.json   (optional) kappa vs. human labels; clears the provisional mark at >= 0.6
+  human_agreement.json   (optional) `secqa human-agreement`: kappa vs. human labels; clears the
+                         provisional mark at >= 0.6
+  judge_swap_<provider>_<model>.json   (optional) `secqa judge-swap`: kappa vs. a second judge
 ```
 
 `run_id` = `<git sha7>_<UTC timestamp>`. `secqa report results/ --out RESULTS.md` renders the
