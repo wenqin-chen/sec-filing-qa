@@ -46,6 +46,24 @@ from secqa.xbrl import ALLOWED_TABLES, MAX_ROWS, guard_sql, validate_sql
         ("SELECT current_setting('home_directory') FROM documents", "current_setting"),
         ("SELECT * FROM xbrl_facts WHERE tag = current_setting('x')", "current_setting"),
         ("SELECT * FROM range(10)", "table functions are not allowed"),
+        # Rule 4: generators whose result size is an argument (allocated outside memory_limit).
+        ("SELECT length(repeat('a', 600000000)) AS n", "repeat"),
+        ("SELECT repeat(tag, 100000000) FROM xbrl_facts", "repeat"),
+        ("SELECT range(1000000000) AS r", "range"),
+        ("SELECT range(1, 1000000000, 1) AS r", "range"),
+        ("SELECT generate_series(1, 1000000000) AS r", "generate_series"),
+        ("SELECT unnest(range(1000000000)) AS r", "range"),
+        ("SELECT list_transform(range(1000000000), x -> x) AS r", "range"),
+        ("SELECT list_resize([], 1000000000) AS l", "list_resize"),
+        ("SELECT array_resize([], 1000000000) AS l", "array_resize"),
+        ("SELECT rpad(tag, 1000000000, 'x') FROM xbrl_facts", "rpad"),
+        ("SELECT lpad('a', 1000000000, 'x') AS s", "lpad"),
+        ("SELECT printf('%1000000000s', 'a') AS s", "printf"),
+        ("SELECT format('{:>1000000000}', 'a') AS s", "format"),
+        ("SELECT bitstring('1', 1000000000) AS b", "bitstring"),
+        ("SELECT length(x) FROM (SELECT repeat('a', 10) AS x)", "repeat"),
+        ("WITH g AS (SELECT repeat('a', 10) AS x) SELECT * FROM g", "repeat"),
+        ("SELECT tag FROM xbrl_facts WHERE tag = repeat('a', 10)", "repeat"),
         ("SELECT * FROM '/tmp/x.parquet'", "not allowed"),
         ("SELECT * FROM chunks", "table 'chunks' is not allowed"),
         ("SELECT text FROM pages", "table 'pages' is not allowed"),
@@ -87,6 +105,23 @@ def test_rejects_non_string() -> None:
 
 
 # ---- accepted -------------------------------------------------------------------------------
+
+
+def test_generator_rejection_names_the_rule() -> None:
+    with pytest.raises(SqlRejected, match="result size is unbounded by the data") as info:
+        validate_sql("SELECT repeat('a', 600000000)")
+    assert "repeat()" in info.value.reason
+
+
+def test_accepts_size_bounded_string_and_list_functions() -> None:
+    """Functions whose output is a function of their input stay available to the model."""
+    sql = (
+        "SELECT upper(tag), left(tag, 3), substring(tag, 1, 5), tag || '-' || accn, "
+        "concat(tag, accn), string_agg(tag, ','), list(val), len(list(val)), "
+        "round(sum(val), 2), strftime(end_date, '%Y'), list_sort(list(val)) "
+        "FROM xbrl_facts GROUP BY tag, accn"
+    )
+    assert validate_sql(sql).endswith(f"LIMIT {MAX_ROWS}")
 
 
 def test_accepts_cte_and_appends_limit() -> None:

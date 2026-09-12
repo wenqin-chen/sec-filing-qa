@@ -207,7 +207,13 @@ def load_index(state: AppState) -> None:
                 f"index not found at {path}; run `secqa ingest ...` or set SECQA_INDEX_URL"
             )
         embedder = get_embedder(settings.embedder, settings)
-        store = DuckDBStore(path, embed_dim=embedder.dim, read_only=True)
+        store = DuckDBStore(
+            path,
+            embed_dim=embedder.dim,
+            read_only=True,
+            memory_limit=settings.duckdb_memory_limit,
+            threads=settings.duckdb_threads,
+        )
         try:
             retrievers = {
                 strategy: Retriever(store, embedder, strategy=strategy, k=DEFAULT_RETRIEVER_K)  # type: ignore[arg-type]  # strategy comes from the RetrievalStrategy literal

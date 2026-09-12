@@ -15,7 +15,12 @@ from secqa.core.contracts import Chunk, Page
 from secqa.core.errors import ConfigError, IndexMismatch, SqlRejected
 from secqa.core.ids import chunk_id
 from secqa.store import DuckDBStore, ReadOnlyConnection
-from secqa.store.duckdb_store import _PythonBM25
+from secqa.store.duckdb_store import (
+    SERVING_MEMORY_LIMIT,
+    SERVING_THREADS,
+    _PythonBM25,
+    memory_limit_bytes,
+)
 from tests.store.conftest import (
     DIM,
     DOCS,
@@ -543,6 +548,75 @@ def test_read_only_store_is_sandboxed_and_locked(
         with pytest.raises(duckdb.CatalogException, match="spatial extension"):
             raw.execute("SELECT st_point(1, 2)")
     assert (tmp_path / "parquet" / "chunks.parquet").is_file()
+
+
+def test_read_only_store_pins_memory_limit_and_threads(
+    tmp_duckdb_path: Path, embedder: HashingEmbedder
+) -> None:
+    """The serving store runs under a fixed ``memory_limit`` / ``threads`` that no ``SET`` can
+    lift, a second store on the same locked instance must agree, and bad values fail early."""
+    with DuckDBStore(tmp_duckdb_path, embed_dim=DIM) as store:
+        store.init_schema(embedder.name, DIM)
+        assert store.memory_limit is None and store.threads is None  # ingest: engine defaults
+    with DuckDBStore(tmp_duckdb_path, read_only=True) as ro_store:
+        assert ro_store.memory_limit == SERVING_MEMORY_LIMIT
+        assert ro_store.threads == SERVING_THREADS
+        raw = ro_store.readonly_connection()._cursor
+        assert raw.execute("SELECT current_setting('threads')").fetchone() == (SERVING_THREADS,)
+        # DuckDB reports the limit rounded in its own unit ('488.1 MiB' for '512MB').
+        (reported,) = raw.execute("SELECT current_setting('memory_limit')").fetchone()
+        assert memory_limit_bytes(reported) == pytest.approx(
+            memory_limit_bytes(SERVING_MEMORY_LIMIT), rel=0.01
+        )
+        for statement in ("SET memory_limit = '10GB'", "SET threads = 16"):
+            with pytest.raises(duckdb.InvalidInputException, match="locked"):
+                raw.execute(statement)
+        with pytest.raises(ConfigError, match="locked with memory_limit"):
+            DuckDBStore(tmp_duckdb_path, read_only=True, memory_limit="1GB")
+        with pytest.raises(ConfigError, match="locked with threads"):
+            DuckDBStore(tmp_duckdb_path, read_only=True, threads=SERVING_THREADS + 1)
+        DuckDBStore(tmp_duckdb_path, read_only=True).close()  # same values: verified, fine
+    with pytest.raises(ConfigError, match="memory_limit must be a size"):
+        DuckDBStore(tmp_duckdb_path, read_only=True, memory_limit="512 potatoes")
+    with pytest.raises(ConfigError, match="memory_limit must be a size"):
+        DuckDBStore(tmp_duckdb_path, read_only=True, memory_limit="'; SET threads = 1; --")
+    with pytest.raises(ValueError, match="threads must be >= 1"):
+        DuckDBStore(tmp_duckdb_path, read_only=True, threads=0)
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("512MB", 512e6),
+        ("1GiB", 2**30),
+        ("488.1 MiB", 488.1 * 2**20),
+        ("1.5gb", 1.5e9),
+        ("1024 bytes", 1024.0),
+    ],
+)
+def test_memory_limit_bytes(text: str, expected: float) -> None:
+    assert memory_limit_bytes(text) == pytest.approx(expected)
+
+
+@pytest.mark.parametrize("text", ["", "512", "512 potatoes", "-5MB", "1e3MB", "512MB; SET x=1"])
+def test_memory_limit_bytes_rejects_non_sizes(text: str) -> None:
+    with pytest.raises(ConfigError, match="memory_limit must be a size"):
+        memory_limit_bytes(text)
+
+
+def test_memory_limit_makes_oversized_queries_fail_instead_of_growing() -> None:
+    """A string that doubles through 30 nested subqueries wants 1 GiB; under a 64 MB limit the
+    buffer manager refuses the allocation and the store keeps working."""
+    doubling = "SELECT 'a' AS s"
+    for _ in range(30):
+        doubling = f"SELECT s || s AS s FROM ({doubling})"
+    with DuckDBStore(":memory:", memory_limit="64MB", threads=1) as store:
+        raw = store.readonly_connection()._cursor
+        (reported,) = raw.execute("SELECT current_setting('memory_limit')").fetchone()
+        assert memory_limit_bytes(reported) == pytest.approx(64e6, rel=0.01)
+        with pytest.raises(duckdb.OutOfMemoryException):
+            raw.execute(f"SELECT length(s) FROM ({doubling})").fetchall()
+        assert store.readonly_connection().execute("SELECT 41 + 1").fetchone() == (42,)
 
 
 def test_readonly_result_fetch_helpers(populated_store: DuckDBStore) -> None:

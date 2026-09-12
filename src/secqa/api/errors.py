@@ -31,7 +31,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from secqa.core.errors import ConfigError, IndexMismatch, ProviderError, SqlRejected
 from secqa.core.logging import get_logger
-from secqa.xbrl import SqlTimeout
+from secqa.xbrl import SqlTimeout, SqlToolUnavailable
 
 log = get_logger(__name__)
 
@@ -203,6 +203,17 @@ def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(SqlTimeout)
     async def _sql_timeout(request: Request, exc: SqlTimeout) -> JSONResponse:
         return problem(504, "SQL timeout", exc.reason, request_id_of(request))
+
+    @app.exception_handler(SqlToolUnavailable)
+    async def _sql_unavailable(request: Request, exc: SqlToolUnavailable) -> JSONResponse:
+        log.warning("sql_tool_unavailable", reason=exc.reason)
+        return problem(
+            503,
+            "SQL tool unavailable",
+            exc.reason,
+            request_id_of(request),
+            headers={"Retry-After": "5"},
+        )
 
     @app.exception_handler(SqlRejected)
     async def _sql_rejected(request: Request, exc: SqlRejected) -> JSONResponse:

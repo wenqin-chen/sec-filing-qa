@@ -19,7 +19,7 @@ from secqa.xbrl.financials import (
 )
 from secqa.xbrl.load import flatten_companyfacts, load_companyfacts
 from secqa.xbrl.sql_guard import ALLOWED_TABLES, MAX_ROWS, guard_sql, validate_sql
-from secqa.xbrl.sql_tool import SqlExecutionError, SqlTimeout, run_readonly_sql
+from secqa.xbrl.sql_tool import SqlExecutionError, SqlTimeout, SqlToolUnavailable, run_readonly_sql
 
 __all__ = [
     "ALLOWED_TABLES",
@@ -28,6 +28,7 @@ __all__ = [
     "MAX_ROWS",
     "SqlExecutionError",
     "SqlTimeout",
+    "SqlToolUnavailable",
     "create_financials_view",
     "financials_columns",
     "flatten_companyfacts",

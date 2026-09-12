@@ -27,6 +27,14 @@ Design notes (SPEC 4.2):
   ``external_access=True`` for ``COPY TO``) and lock the configuration so no later ``SET`` can
   undo any of it. Writable stores are not locked: DuckDB's ``create_fts_index`` macro sets a
   session option internally and fails under ``lock_configuration``.
+* Read-only stores also pin ``memory_limit`` (:data:`SERVING_MEMORY_LIMIT`, 512 MB) and
+  ``threads`` (:data:`SERVING_THREADS`, 2) before locking. DuckDB's default limit is 80 % of
+  host RAM, which inside a 2 GiB container means an aggregate, join, sort or recursive CTE fed
+  by model-driven SQL grows until the cgroup kills the worker; under the pinned limit such a
+  query fails with an ``OutOfMemoryException`` that the SQL tool maps to a 400 instead. The
+  limit governs the buffer manager only: DuckDB does not account scalar string / list
+  construction against it, so :mod:`secqa.xbrl.sql_guard` additionally refuses the functions
+  whose output size is an argument (``repeat``, ``range``, ``list_resize``, ``rpad`` ...).
 
 A DuckDB connection is not thread-safe (two threads interleaving ``execute`` and ``fetch`` on
 one connection read each other's result sets), so :attr:`DuckDBStore.conn` is per thread: the
@@ -83,12 +91,55 @@ _HARDENED_SETTINGS: tuple[tuple[str, bool], ...] = (
     ("autoinstall_known_extensions", False),
     ("autoload_known_extensions", False),
 )
+# Resource limits pinned on read-only (serving) stores unless the caller passes its own; a
+# writable (ingest) store keeps DuckDB's defaults. See :meth:`DuckDBStore._harden_configuration`.
+SERVING_MEMORY_LIMIT = "512MB"
+SERVING_THREADS = 2
+# DuckDB's grammar for ``memory_limit``: a number and a unit (``512MB``, ``1.5GiB``, ``bytes``).
+_MEMORY_LIMIT_RE = re.compile(r"^(\d+(?:\.\d+)?)\s*([KMGT]i?B|bytes?)$", re.IGNORECASE)
+_MEMORY_UNITS = {
+    "b": 1,
+    "byte": 1,
+    "bytes": 1,
+    "kb": 10**3,
+    "mb": 10**6,
+    "gb": 10**9,
+    "tb": 10**12,
+    "kib": 2**10,
+    "mib": 2**20,
+    "gib": 2**30,
+    "tib": 2**40,
+}
+# DuckDB reports ``memory_limit`` rounded to one decimal of its own unit and slightly below the
+# requested value on a file-backed instance ('512MB' reads back as '488.1 MiB'), so a locked
+# instance is checked against the wanted value within this relative tolerance.
+_MEMORY_LIMIT_TOLERANCE = 0.01
 
 # Leading keywords that DuckDB's parser classifies as SELECT but which are not plain reads.
 _DENIED_LEADING_KEYWORDS = frozenset(
     {"PRAGMA", "CALL", "SET", "RESET", "EXPORT", "IMPORT", "CHECKPOINT", "FORCE", "VACUUM"}
 )
 _LEADING_COMMENT_RE = re.compile(r"^(?:\s*(?:--[^\n]*\n|/\*.*?\*/))*\s*", re.DOTALL)
+
+
+def memory_limit_bytes(value: str) -> float:
+    """Bytes denoted by a DuckDB memory size (``'512MB'`` -> 512e6, ``'488.1 MiB'`` -> ...).
+
+    Decimal units (KB, MB, GB, TB) are powers of 1000 and binary ones (KiB, MiB, GiB, TiB)
+    powers of 1024, as in DuckDB. Raises :class:`ConfigError` for anything else, including
+    anything that is not a plain size (so a value from the environment cannot smuggle SQL).
+    """
+    match = _MEMORY_LIMIT_RE.match(value.strip())
+    if match is None:
+        raise ConfigError(f"memory_limit must be a size such as '512MB' or '1GiB', got {value!r}")
+    number, unit = match.groups()
+    return float(number) * _MEMORY_UNITS[unit.lower()]
+
+
+def _memory_limits_agree(reported: str, wanted: str) -> bool:
+    return abs(memory_limit_bytes(reported) - memory_limit_bytes(wanted)) <= (
+        _MEMORY_LIMIT_TOLERANCE * memory_limit_bytes(wanted)
+    )
 
 
 # ---------------------------------------------------------------------------------------------
@@ -291,6 +342,8 @@ class DuckDBStore:
         embed_dim: int | None = None,
         read_only: bool = False,
         external_access: bool | None = None,
+        memory_limit: str | None = None,
+        threads: int | None = None,
     ):
         """Open (or create) the store.
 
@@ -305,10 +358,25 @@ class DuckDBStore:
                 network (``COPY TO``, ``read_csv``, ``INSTALL`` ...). Defaults to
                 ``not read_only``: ingest needs it, serving must not have it. ``secqa export``
                 opens read-only with ``external_access=True`` because ``COPY TO`` writes files.
+            memory_limit: DuckDB ``memory_limit`` for the whole database instance (``'512MB'``,
+                ``'1GiB'`` ...). Defaults to :data:`SERVING_MEMORY_LIMIT` when ``read_only``
+                and to the engine default (80 % of host RAM) otherwise.
+            threads: DuckDB worker threads. Defaults to :data:`SERVING_THREADS` when
+                ``read_only`` and to the engine default (one per core) otherwise.
         """
         self.path: str = _MEMORY if str(path) == _MEMORY else str(Path(path))
         self.read_only = read_only
         self.external_access: bool = (not read_only) if external_access is None else external_access
+        if memory_limit is None and read_only:
+            memory_limit = SERVING_MEMORY_LIMIT
+        if memory_limit is not None:
+            memory_limit_bytes(memory_limit)  # validates the syntax
+        self.memory_limit: str | None = None if memory_limit is None else memory_limit.strip()
+        if threads is None and read_only:
+            threads = SERVING_THREADS
+        if threads is not None and threads < 1:
+            raise ValueError(f"threads must be >= 1, got {threads}")
+        self.threads: int | None = threads
         if embed_dim is not None and embed_dim <= 0:
             raise ValueError(f"embed_dim must be positive, got {embed_dim}")
         if self.path == _MEMORY:
@@ -935,11 +1003,17 @@ class DuckDBStore:
         is already locked (a second read-only store on the same file in one process) the values
         are verified instead of set, and a disagreement is a :class:`ConfigError` because the
         hardening cannot be guaranteed.
+
+        ``memory_limit`` and ``threads`` (when set on this store) are pinned the same way; as
+        DuckDB reports ``memory_limit`` rounded in its own units, a locked instance's value is
+        compared with the wanted one within :data:`_MEMORY_LIMIT_TOLERANCE`.
         """
         conn = self.conn
-        wanted = dict(_HARDENED_SETTINGS)
+        wanted: dict[str, bool | int] = dict(_HARDENED_SETTINGS)
         wanted["enable_external_access"] = self.external_access
-        locked = self._current_setting("lock_configuration")
+        if self.threads is not None:
+            wanted["threads"] = self.threads
+        locked = self._current_setting("lock_configuration") is True
         for name, value in wanted.items():
             current = self._current_setting(name)
             if current == value:
@@ -949,19 +1023,41 @@ class DuckDBStore:
                     f"DuckDB configuration of {self.path} is locked with {name}={current!r}; "
                     f"expected {value!r}"
                 )
-            conn.execute(f"SET {name} = {'true' if value else 'false'}")
+            if isinstance(value, bool):
+                conn.execute(f"SET {name} = {'true' if value else 'false'}")
+            else:
+                conn.execute(f"SET {name} = ?", [value])
+        if self.memory_limit is not None:
+            reported = str(self._current_setting("memory_limit"))
+            if locked:
+                if not _memory_limits_agree(reported, self.memory_limit):
+                    raise ConfigError(
+                        f"DuckDB configuration of {self.path} is locked with "
+                        f"memory_limit={reported!r}; expected {self.memory_limit!r}"
+                    )
+            else:
+                conn.execute("SET memory_limit = ?", [self.memory_limit])
         if self.read_only and not locked:
             conn.execute("SET lock_configuration = true")
-        log.debug("duckdb_configuration_hardened", locked=self.read_only or locked, **wanted)
+        log.debug(
+            "duckdb_configuration_hardened",
+            locked=self.read_only or locked,
+            memory_limit=self.memory_limit,
+            **wanted,
+        )
 
-    def _current_setting(self, name: str) -> bool:
+    def _current_setting(self, name: str) -> bool | int | str:
+        """``current_setting(name)`` as a bool for on/off options, else an int or a string."""
         row = self.conn.execute("SELECT current_setting(?)", [name]).fetchone()
         if row is None:  # pragma: no cover - current_setting always yields one row
             raise ConfigError(f"DuckDB did not report the value of {name}")
         value = row[0]
-        if isinstance(value, bool):
+        if isinstance(value, bool | int):
             return value
-        return str(value).strip().lower() == "true"
+        text = str(value).strip()
+        if text.lower() in ("true", "false"):
+            return text.lower() == "true"
+        return text
 
     def _ensure_fts_index(self) -> None:
         if self._fts_stale or not self._fts_index_exists():
@@ -1075,4 +1171,11 @@ def _to_naive_utc(value: datetime) -> datetime:
     return value.astimezone(UTC).replace(tzinfo=None)
 
 
-__all__ = ["DuckDBStore", "ReadOnlyConnection", "ReadOnlyResult"]
+__all__ = [
+    "SERVING_MEMORY_LIMIT",
+    "SERVING_THREADS",
+    "DuckDBStore",
+    "ReadOnlyConnection",
+    "ReadOnlyResult",
+    "memory_limit_bytes",
+]

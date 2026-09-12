@@ -18,7 +18,7 @@ from secqa.api.errors import (
 )
 from secqa.api.middleware import RequestContextMiddleware
 from secqa.core.errors import ConfigError, IndexMismatch, ProviderError, SqlRejected
-from secqa.xbrl import SqlExecutionError, SqlTimeout
+from secqa.xbrl import SqlExecutionError, SqlTimeout, SqlToolUnavailable
 
 
 @pytest.fixture
@@ -30,6 +30,7 @@ def client() -> Iterator[TestClient]:
         "sql-timeout": SqlTimeout("query exceeded 5 s and was interrupted"),
         "sql-rejected": SqlRejected("DROP is not allowed"),
         "sql-execution": SqlExecutionError("query failed: Binder Error"),
+        "sql-unavailable": SqlToolUnavailable("SQL tool is busy: 2 earlier queries ..."),
         "provider": ProviderError("rate limited", retryable=True, provider="anthropic"),
         "provider-permanent": ProviderError("bad key", retryable=False, provider="openai"),
         "config": ConfigError("provider needs a key"),
@@ -53,6 +54,7 @@ def client() -> Iterator[TestClient]:
         ("sql-timeout", 504, "SQL timeout"),
         ("sql-rejected", 400, "SQL rejected"),
         ("sql-execution", 400, "SQL rejected"),
+        ("sql-unavailable", 503, "SQL tool unavailable"),
         ("provider", 502, "Upstream provider error"),
         ("provider-permanent", 502, "Upstream provider error"),
         ("config", 503, "Provider not configured"),
@@ -76,6 +78,13 @@ def test_mapping(client: TestClient, name: str, status: int, title: str) -> None
 def test_sql_timeout_wins_over_its_parent(client: TestClient) -> None:
     assert client.get("/raise/sql-timeout").status_code == 504
     assert client.get("/raise/sql-rejected").status_code == 400
+
+
+def test_sql_unavailable_is_retryable(client: TestClient) -> None:
+    response = client.get("/raise/sql-unavailable")
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "5"
+    assert response.json()["detail"].startswith("SQL tool is busy")
 
 
 def test_provider_error_details(client: TestClient) -> None:

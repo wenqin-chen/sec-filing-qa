@@ -192,7 +192,8 @@ The same picture as text:
 - Retrieved text and SQL rows are data, not instructions: every answering prompt says so, and a
   test injects "ignore previous instructions" into a fixture chunk.
 - `query_xbrl` / `POST /v1/xbrl/query`: sqlglot allowlist (single `SELECT`/`WITH`, tables
-  `xbrl_facts` / `financials` / `documents` only, no table or file functions, `LIMIT 200` forced)
+  `xbrl_facts` / `financials` / `documents` only, no table, file or size-from-argument generator
+  functions, `LIMIT 200` forced, 512 MB DuckDB `memory_limit`, 4 KB cells)
   *and* a DuckDB `BEGIN TRANSACTION READ ONLY` per statement, in a worker thread with a 5 s
   interrupt.
 - `calculate`: Python `ast` whitelist (numbers, `+ - * / ** %`, unary minus, parentheses,

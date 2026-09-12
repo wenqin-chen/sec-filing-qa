@@ -20,8 +20,17 @@ Rules (each has a test in ``tests/xbrl/test_sql_guard.py``):
    configuration with extension auto-install / auto-load off (and external access off when
    serving), so a scalar call to a function of an extension that is not loaded is a catalog
    error, not a download from ``extensions.duckdb.org``.
-4. No bind parameters (``?``, ``$1``) - values are inlined by the model.
-5. ``LIMIT`` is forced: absent, non-literal, percentage or above ``MAX_ROWS`` -> ``LIMIT 200``.
+4. No generator functions whose output size is an argument rather than a function of their
+   input: ``repeat``, ``range`` / ``generate_series`` (the scalar list form; the table form is
+   rule 3), ``list_resize`` / ``array_resize``, ``lpad`` / ``rpad``, ``printf`` / ``format``
+   (width specifiers) and ``bitstring``. DuckDB allocates their result outside the buffer
+   manager, so the store's ``memory_limit`` does not bound them and they do not check for an
+   interrupt while allocating: ``repeat('a', 600000000)`` takes the worker from 170 MB to 1.3 GB
+   in three seconds and ``range(1000000000)`` ignores the 5 s interrupt for ten. Aggregates,
+   joins, sorts and recursive CTEs are tracked by the buffer manager and fail cleanly under the
+   limit, so they stay allowed.
+5. No bind parameters (``?``, ``$1``) - values are inlined by the model.
+6. ``LIMIT`` is forced: absent, non-literal, percentage or above ``MAX_ROWS`` -> ``LIMIT 200``.
 
 The validated statement is re-rendered from the AST, so what runs is what was checked.
 """
@@ -72,6 +81,25 @@ _DENIED_FUNCTIONS = frozenset(
         "load_extension",
         "from_substrait",
         "get_substrait",
+    }
+)
+# Rule 4: output size comes from an argument; allocated outside ``memory_limit`` and not
+# interruptible. Names are as sqlglot reports them (``lpad``/``rpad`` parse to ``PAD``,
+# ``range`` to ``GENERATE_SERIES``); the aliases are listed too in case a future sqlglot keeps
+# them verbatim.
+_DENIED_GENERATORS = frozenset(
+    {
+        "repeat",
+        "generate_series",
+        "range",
+        "list_resize",
+        "array_resize",
+        "pad",
+        "lpad",
+        "rpad",
+        "printf",
+        "format",
+        "bitstring",
     }
 )
 # ``exp.DDL`` / ``exp.DML`` are mixins rather than ``Expression`` subclasses, hence ``type``.
@@ -165,6 +193,15 @@ def _check_tree(query: exp.Query) -> None:
             name = _function_name(node)
             if name in _DENIED_FUNCTIONS or name.startswith(_DENIED_FUNCTION_PREFIXES):
                 raise SqlRejected(f"function {name}() is not allowed in a read-only query")
+            # In table position rule 3 reports it as a table function (a clearer reason).
+            if name in _DENIED_GENERATORS and not isinstance(node.parent, exp.Table):
+                # sqlglot folds rpad/lpad into PAD and range into GENERATE_SERIES; report the
+                # name the caller wrote, as rendered back in the DuckDB dialect.
+                written = node.sql(dialect=DIALECT).split("(", 1)[0].strip().lower() or name
+                raise SqlRejected(
+                    f"function {written}() is not allowed: its result size is unbounded by "
+                    "the data; query the tables instead"
+                )
 
 
 def _check_tables(query: exp.Query) -> None:

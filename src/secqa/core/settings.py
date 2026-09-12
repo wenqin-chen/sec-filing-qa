@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     # storage / index
     duckdb_path: Path = Path("data/index.duckdb")
     index_url: str | None = None
+    # DuckDB resource limits of the serving store (SECQA_DUCKDB_MEMORY_LIMIT / _THREADS): a
+    # fraction of the container memory, so an oversized model-driven query fails instead of
+    # growing the process until the cgroup kills it. Validated by DuckDBStore.
+    duckdb_memory_limit: str = "512MB"
+    duckdb_threads: int = Field(default=2, ge=1)
 
     # models
     provider: str = "mock"

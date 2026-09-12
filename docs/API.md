@@ -156,9 +156,14 @@ Response `SqlResult`: `{columns, rows, row_count, truncated, sql}` where `sql` i
 as re-rendered after validation (a `LIMIT 200` is forced). The guard (sqlglot, DuckDB dialect)
 accepts exactly one `SELECT` / `WITH … SELECT` over `xbrl_facts`, `financials` and `documents`,
 refuses DDL / DML / `COPY` / `PRAGMA` / `ATTACH` / `INSTALL` / `LOAD` / `SET`, table functions
-(`read_csv`, `read_parquet`, `glob`, …), file and system functions, bind parameters, and CTE
-names that shadow a store table; then the statement runs in a `READ ONLY` transaction with a
-5 s interrupt. 400 when rejected (`detail` is the guard's reason), 504 on timeout.
+(`read_csv`, `read_parquet`, `glob`, …), file and system functions, generator functions whose
+result size is an argument rather than the data (`repeat`, `range`, `list_resize`, `rpad`,
+`printf`, …), bind parameters, and CTE names that shadow a store table; then the statement runs
+in a `READ ONLY` transaction with a 5 s interrupt on a store pinned to `memory_limit` 512 MB
+(`SECQA_DUCKDB_MEMORY_LIMIT`), so an oversized aggregate or join fails instead of growing the
+process. Cells longer than 4096 characters (as text or JSON) are cut and end in `…[truncated]`.
+400 when rejected or when DuckDB refuses the statement (`detail` is the reason), 504 on
+timeout, 503 with `Retry-After` while earlier interrupted queries are still winding down.
 
 ## Errors
 
