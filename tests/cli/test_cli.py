@@ -376,6 +376,58 @@ def test_eval_mock_limit_writes_summary_and_rescore_replays(
     assert bad.exit_code == 1 and "run config not found" in bad.stderr
 
 
+def test_eval_run_id_writes_exactly_that_directory(
+    invoke: Invoke, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``--run-id`` (what eval-full.yml passes) names the directory instead of letting the
+    runner mint one, so CI can publish the run it paid for without listing results/."""
+    monkeypatch.chdir(REPO_ROOT)
+    results = tmp_path / "results"
+    # a pre-existing run whose id sorts after the new one: a naive "latest" pick would find it
+    decoy = results / "rag_mock" / "ff00aaa_20260101-0000"
+    decoy.mkdir(parents=True)
+    (decoy / "summary.json").write_text("{}", encoding="utf-8")
+    result = invoke(
+        "-q",
+        "eval",
+        "--config",
+        str(CONFIGS_DIR / "rag_mock.yaml"),
+        "--limit",
+        "2",
+        "--db",
+        str(tmp_path / "fixture.duckdb"),
+        "--out",
+        str(results),
+        "--cassette-dir",
+        str(tmp_path / "cassettes"),
+        "--run-id",
+        "852c7b9_20260912-0419",
+    )
+    assert result.exit_code == 0, result.output
+    run_dir = results / "rag_mock" / "852c7b9_20260912-0419"
+    assert run_dir.is_dir(), sorted(p.name for p in (results / "rag_mock").iterdir())
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    assert summary["run_id"] == "852c7b9_20260912-0419" and summary["n_completed"] == 2
+    assert (run_dir / "config.json").is_file() and (run_dir / "predictions.jsonl").is_file()
+    assert (decoy / "summary.json").read_text(encoding="utf-8") == "{}"  # untouched
+
+    bad = invoke(
+        "-q",
+        "eval",
+        "--config",
+        str(CONFIGS_DIR / "rag_mock.yaml"),
+        "--db",
+        str(tmp_path / "fixture.duckdb"),
+        "--out",
+        str(results),
+        "--cassette-dir",
+        str(tmp_path / "cassettes"),
+        "--run-id",
+        "a/b",
+    )
+    assert bad.exit_code == 1 and "plain directory name" in bad.stderr
+
+
 def test_eval_rebuilds_a_stale_fixture_index(
     invoke: Invoke, tmp_path: Path, built_index: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

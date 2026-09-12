@@ -1164,6 +1164,13 @@ def eval_cmd(
         typer.Option("--questions", help="JSONL questions (default: config / dataset)."),
     ] = None,
     cache_dir: Annotated[Path, typer.Option("--cache-dir")] = DEFAULT_CACHE_DIR,
+    run_id: Annotated[
+        str | None,
+        typer.Option(
+            "--run-id",
+            help="Write exactly results/<config>/<run_id>/ (CI passes the id it will publish).",
+        ),
+    ] = None,
 ) -> None:
     """Run one row of the evaluation matrix into results/<config>/<run_id>/.
 
@@ -1191,6 +1198,7 @@ def eval_cmd(
             out_dir=out_dir,
             resume=resume,
             cassette_dir=resolved_cassettes,
+            run_id=run_id,
         )
     _print_summary(run_dir)
 

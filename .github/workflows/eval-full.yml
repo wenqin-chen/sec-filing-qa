@@ -95,16 +95,28 @@ jobs:
           SECQA_GIT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          if [ -n "${{ inputs.limit }}" ]; then
-            uv run --no-sync secqa eval --config "configs/${{ inputs.config }}" --limit "${{ inputs.limit }}"
-          else
-            uv run --no-sync secqa eval --config "configs/${{ inputs.config }}"
-          fi
+          # The run id is decided here and handed to `secqa eval --run-id`, so every later step
+          # (cassette pack, artifact upload, PR) names the directory this job wrote. Discovering
+          # it afterwards from results/<config>/ is wrong: the checkout already holds every
+          # committed run, and ids are <git_sha7>_<stamp>, which do not sort by time.
           CONFIG_NAME=$(basename "${{ inputs.config }}" .yaml)
-          RUN_DIR=$(ls -d results/"${CONFIG_NAME}"/*/ | sort | tail -n 1)
-          RUN_ID=$(basename "${RUN_DIR}")
+          RUN_ID=$(uv run --no-sync python -c "from secqa.eval.runner import make_run_id; print(make_run_id('${{ github.sha }}'))")
+          RUN_DIR="results/${CONFIG_NAME}/${RUN_ID}"
+          if [ -e "${RUN_DIR}" ]; then
+            echo "::error::${RUN_DIR} already exists; refusing to resume into a committed run"; exit 1
+          fi
+          if [ -n "${{ inputs.limit }}" ]; then
+            uv run --no-sync secqa eval --config "configs/${{ inputs.config }}" --run-id "${RUN_ID}" --limit "${{ inputs.limit }}"
+          else
+            uv run --no-sync secqa eval --config "configs/${{ inputs.config }}" --run-id "${RUN_ID}"
+          fi
+          for f in config.json predictions.jsonl summary.json; do
+            if [ ! -s "${RUN_DIR}/${f}" ]; then
+              echo "::error::${RUN_DIR}/${f} missing after secqa eval"; exit 1
+            fi
+          done
           echo "config_name=${CONFIG_NAME}" >> "$GITHUB_OUTPUT"
-          echo "run_dir=${RUN_DIR%/}" >> "$GITHUB_OUTPUT"
+          echo "run_dir=${RUN_DIR}" >> "$GITHUB_OUTPUT"
           echo "run_id=${RUN_ID}" >> "$GITHUB_OUTPUT"
           {
             echo "## ${CONFIG_NAME} / ${RUN_ID}"

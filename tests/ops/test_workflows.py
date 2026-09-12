@@ -244,3 +244,29 @@ class TestEvalFull:
             if str(s.get("uses", "")).startswith("actions/upload-artifact")
         )
         assert "artifacts/*.tar.zst" in upload["with"]["path"]
+
+    def test_run_id_is_chosen_before_the_eval_and_never_discovered_by_sorting(self) -> None:
+        """Run ids are ``<git_sha7>_<YYYYMMDD-HHMM>``, so ``ls results/<config>/ | sort`` orders
+        by commit hash, not by time, and the checkout already contains every committed run of
+        the config. The workflow must decide the id first (with the runner's own
+        ``make_run_id``), pass it to ``secqa eval --run-id``, check the files it will publish
+        exist, and hand that same id to the later steps."""
+        wf = load_workflow("eval-full")
+        step = next(s for s in _steps(wf, "eval") if s.get("id") == "run")
+        run = str(step["run"])
+        assert "| sort" not in run and "ls -" not in run and "tail -n" not in run, (
+            "the run directory must not be guessed from a directory listing"
+        )
+        assert "make_run_id" in run and "${{ github.sha }}" in run
+        id_line = run.index("RUN_ID=$(")
+        eval_lines = [line for line in run.splitlines() if "secqa eval --config" in line]
+        assert len(eval_lines) == 2 and all('--run-id "${RUN_ID}"' in line for line in eval_lines)
+        assert id_line < run.index("secqa eval --config"), "id decided before the eval runs"
+        assert 'RUN_DIR="results/${CONFIG_NAME}/${RUN_ID}"' in run
+        assert 'if [ -e "${RUN_DIR}" ]' in run and "exit 1" in run, "never resumes an old run"
+        for name in ("config.json", "predictions.jsonl", "summary.json"):
+            assert name in run, f"asserts {name} was written to the published directory"
+        assert run.index("summary.json") > run.index("secqa eval --config")
+        assert 'echo "run_id=${RUN_ID}"' in run and 'echo "run_dir=${RUN_DIR}"' in run
+        later = "\n".join(str(s.get("run", "")) for s in _steps(wf, "eval")[1:])
+        assert "steps.run.outputs.run_id" in later
