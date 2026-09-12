@@ -1,0 +1,106 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_FROZEN: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  test:
+    name: ruff + pytest (Python 3.11)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.21"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Install project (dev + vendor SDK extras, no local embedder)
+        run: uv sync --extra dev --extra openai --extra anthropic
+
+      - name: Ruff lint
+        run: uv run --no-sync ruff check .
+
+      - name: Ruff format check
+        run: uv run --no-sync ruff format --check .
+
+      - name: Mypy (non-blocking)
+        run: uv run --no-sync mypy || true
+
+      - name: Offline tests with coverage
+        run: uv run --no-sync pytest -q --cov=secqa --cov-report=xml --cov-report=term
+
+      - name: Mock smoke evaluation
+        if: hashFiles('configs/rag_mock.yaml') != ''
+        run: uv run --no-sync secqa eval --config configs/rag_mock.yaml --limit 6
+
+      - name: Upload coverage and smoke results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-outputs
+          path: |
+            coverage.xml
+            results/**/summary.json
+          if-no-files-found: ignore
+
+  docker:
+    name: docker build (no push)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for Dockerfile
+        id: dockerfile
+        run: |
+          if [ -f Dockerfile ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "present=false" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Set up Docker Buildx
+        if: steps.dockerfile.outputs.present == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image (target slim, no push)
+        if: steps.dockerfile.outputs.present == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          target: slim
+          push: false
+          load: true
+          tags: sec-filing-qa:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke the container
+        if: steps.dockerfile.outputs.present == 'true'
+        run: |
+          docker run -d --rm -p 8080:8080 --name secqa sec-filing-qa:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/healthz; then break; fi
+            sleep 2
+          done
+          curl -fsS http://localhost:8080/healthz
+          docker stop secqa
+
+      - name: Dockerfile not present yet
+        if: steps.dockerfile.outputs.present != 'true'
+        run: echo "Dockerfile is provided by the ops module; skipping the docker build."

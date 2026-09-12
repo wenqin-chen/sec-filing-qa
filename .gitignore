@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+build/
+dist/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# uv / virtualenvs
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+
+# Project data (large, gitignored; see data/README.md)
+data/*.duckdb
+data/*.duckdb.wal
+data/raw/
+data/cache/
+data/parquet/
+data/index*.tar.zst
+*.duckdb
+*.duckdb.wal
+
+# Evaluation outputs and cassettes (results/<config>/<run_id>/ is committed explicitly, never by default)
+results/
+cassettes/*.tar.zst
+cassettes/*/
+
+# Model caches
+.cache/
+models/
+~/.cache/
+huggingface/
+sentence_transformers/
+torch_cache/
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
