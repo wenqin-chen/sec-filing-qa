@@ -259,6 +259,7 @@ def test_judge_error_keeps_the_record_scored(tmp_path: Path) -> None:
     ]
     summary = summarize(write_predictions(tmp_path / "run", records), n_boot=50, seed=0)
     assert summary.n == 5 and summary.n_completed == 4
+    assert summary.n_dataset is None  # no config.json: the dataset size is unknown
     m = summary.metrics
     assert m["error_rate"] == pytest.approx(1 / 5)
     assert m["judge_error_rate"] == pytest.approx(3 / 4)

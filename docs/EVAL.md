@@ -36,7 +36,9 @@ Ablations if budget allows (not configured yet): `text-embedding-3-small` index;
 
 Procedure per provider: 10-question smoke → 30-question pilot → cost extrapolation → full rows
 within the author's cap (`max_total_cost_usd` in the config). Runs resume (done ids skipped,
-cassette hits free); a row that stops early is reported as `partial (done/n)`, never dropped.
+cassette hits free); a row that stops early is reported as `partial (done/n)`, never dropped,
+and a `--limit` run as `subset (done/150)`. A row always shows its widest run, so a smoke or
+pilot run finished after the full row can never replace it in `RESULTS.md`.
 
 Budget expectation, to be measured rather than asserted: agent rows dominate; rough upper bound
 150 q × (~25k input + ~2k output tokens) ≈ $30 per Opus-tier row, ≈ $130 for the 8 LLM rows plus
@@ -143,7 +145,7 @@ and the class (no dataset text).
 Percentile bootstrap of the mean, 2000 resamples, seed 0, 95% interval, for every rate metric.
 With n = 150 a proportion's interval spans roughly ±7–8 percentage points; per-`question_type`
 cells are wider. **Overlapping intervals are not evidence of a difference**, and the README
-declares no winner. Rows with fewer completed questions (partial) show their `n`.
+declares no winner. Rows with fewer completed questions (partial or subset) show their `n`.
 
 ## Results files and provenance
 
@@ -183,7 +185,8 @@ reason (`requires OPENAI_API_KEY and the FinanceBench index`, ...), never an omi
 
 - Every README number comes from a committed `summary.json` with git SHA, run date, index
   manifest hash, prompt hashes, judge version and `models.yaml` `as_of`.
-- Missing rows are "pending", never omitted; partial rows say so.
+- Missing rows are "pending", never omitted; partial rows say so, and a `--limit` run is a
+  "subset" that never displaces a full row.
 - Mock results appear only in CI logs and artifacts.
 - Resume bullets quote only numbers in `RESULTS.md` at the tagged release; if the LLM rows are
   not complete, the fallback wording is "RAG + agent system with offline evaluation harness and

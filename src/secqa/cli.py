@@ -1110,6 +1110,8 @@ def _print_summary(run_dir: Path) -> None:
         ("judge", f"{summary.judge_model} ({summary.judge_version})"),
         ("completed", f"{summary.n_completed}/{summary.n}"),
     ]
+    if summary.n_dataset is not None and summary.n < summary.n_dataset:
+        rows.append(("subset", f"{summary.n} of {summary.n_dataset} questions (--limit)"))
     for key in (
         "accuracy",
         "abstain_rate",

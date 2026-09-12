@@ -1,10 +1,11 @@
 """RESULTS.md rendering: golden file with every real row pending, mock rows excluded,
-then a synthetic completed run rendering numbers, partial status and the provisional mark."""
+then a synthetic completed run rendering numbers, partial status and the provisional mark,
+and a ``--limit`` run that must render as a subset and never displace the full row."""
 
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -99,6 +100,130 @@ def test_completed_partial_and_provisional_rows(tmp_path: Path) -> None:
 
     out = write_results_md(results, CONFIGS_DIR, tmp_path / "RESULTS.md")
     assert out.read_text(encoding="utf-8").startswith("# Results")
+
+
+def _write_run(
+    results: Path,
+    run_id: str,
+    ids: list[str],
+    *,
+    n_questions: int,
+    n_dataset: int | None,
+    finished_after: timedelta,
+) -> Path:
+    """A finished ``rag_hybrid_gpt`` run over ``ids`` whose config.json mirrors the runner's."""
+    records = [
+        make_record(qid, numeric=True, judge_label="correct", run_id=run_id).model_copy(
+            update={"timestamp": NOW + finished_after}
+        )
+        for qid in ids
+    ]
+    run_dir = results / "rag_hybrid_gpt" / run_id
+    pred = write_predictions(run_dir, records)
+    config: dict[str, object] = {
+        "config": {"name": "rag_hybrid_gpt"},
+        "run_id": run_id,
+        "n_questions": n_questions,
+        "started_at": NOW.isoformat(),
+    }
+    if n_dataset is not None:
+        config["n_dataset"] = n_dataset
+    (run_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
+    summarize(pred, n_boot=50)
+    return run_dir
+
+
+def _row_of(rendered: str, name: str) -> str:
+    return next(line for line in rendered.splitlines() if line.startswith(f"| `{name}`"))
+
+
+def test_limited_run_is_a_subset_and_never_displaces_the_full_row(tmp_path: Path) -> None:
+    """``secqa eval --limit 1`` after a full row: the smoke run is ``subset``, not ``complete``,
+    and the row keeps showing the full run even though the smoke run finished later."""
+    results = tmp_path / "results"
+    smoke = _write_run(
+        results,
+        "smoke_20260911-1300",
+        ["q1"],
+        n_questions=1,
+        n_dataset=4,
+        finished_after=timedelta(hours=1),
+    )
+    rendered = render_results_md(results, CONFIGS_DIR, now=NOW)
+    row = _row_of(rendered, "rag_hybrid_gpt")
+    assert "subset (1/4)" in row and "complete" not in row
+    assert "(0 complete, " in rendered  # a subset run is not counted as a complete row
+    assert "subset rows were run with `--limit`" in rendered
+
+    full = _write_run(
+        results,
+        "full_20260911-1200",
+        ["q1", "q2", "q3", "q4"],
+        n_questions=4,
+        n_dataset=4,
+        finished_after=timedelta(0),
+    )
+    found = latest_summary(results, "rag_hybrid_gpt")
+    assert found is not None and found[1] == full, "the older but wider run must win"
+    row = _row_of(render_results_md(results, CONFIGS_DIR, now=NOW), "rag_hybrid_gpt")
+    assert "| complete |" in row and "subset" not in row
+
+    # a partial full run finished later still does not beat the complete one ...
+    partial = _write_run(
+        results,
+        "full_20260911-1400",
+        ["q1", "q2"],
+        n_questions=4,
+        n_dataset=4,
+        finished_after=timedelta(hours=2),
+    )
+    found = latest_summary(results, "rag_hybrid_gpt")
+    assert found is not None and found[1] == full
+    # ... until it is resumed to completion, when recency decides between equals
+    _write_run(
+        results,
+        "full_20260911-1400",
+        ["q1", "q2", "q3", "q4"],
+        n_questions=4,
+        n_dataset=4,
+        finished_after=timedelta(hours=2),
+    )
+    found = latest_summary(results, "rag_hybrid_gpt")
+    assert found is not None and found[1] == partial
+
+    # a limited run that also stopped early is still a subset of the dataset
+    stopped = _write_run(
+        tmp_path / "other",
+        "pilot",
+        ["q1"],
+        n_questions=3,
+        n_dataset=4,
+        finished_after=timedelta(0),
+    )
+    stopped_summary, _ = latest_summary(tmp_path / "other", "rag_hybrid_gpt") or (None, None)
+    assert stopped_summary is not None and stopped_summary.n_dataset == 4
+    assert "subset (1/4)" in _row_of(
+        render_results_md(tmp_path / "other", CONFIGS_DIR, now=NOW), "rag_hybrid_gpt"
+    )
+    assert smoke.is_dir() and stopped.is_dir()
+
+
+def test_summary_without_n_dataset_keeps_the_old_status_rules(tmp_path: Path) -> None:
+    """summary.json files written before ``n_dataset`` existed still render (never a subset)."""
+    results = tmp_path / "results"
+    _write_run(
+        results,
+        "legacy",
+        ["q1", "q2"],
+        n_questions=2,
+        n_dataset=None,
+        finished_after=timedelta(0),
+    )
+    found = latest_summary(results, "rag_hybrid_gpt")
+    assert found is not None and found[0].n_dataset is None
+    assert "| complete |" in _row_of(
+        render_results_md(results, CONFIGS_DIR, now=NOW), "rag_hybrid_gpt"
+    )
 
 
 def test_retrieval_row_shows_retrieval_metrics_only(tmp_path: Path) -> None:

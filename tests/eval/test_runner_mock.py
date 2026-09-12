@@ -98,6 +98,7 @@ def test_rag_mock_end_to_end(
     assert config["config"]["name"] == "rag_mock"
     assert config["provider"] == "mock" and config["model"] == "mock-extractive"
     assert config["n_questions"] == 6 and len(config["question_ids"]) == 6
+    assert config["n_dataset"] == 6  # no limit: the run covers the whole dataset
     assert config["bm25_backend"] in ("duckdb_fts", "python")
     assert config["cassettes"] is None  # cassette_mode off
     assert config["finished_at"] and config["n_completed"] == 6
@@ -196,6 +197,12 @@ def test_agent_mock_end_to_end(
     run_dir = run_eval(cfg, questions, store, out_dir=tmp_path / "results", prices=prices)
     records = read_records(run_dir / "predictions.jsonl")
     assert len(records) == 3  # limit honoured
+    config = json.loads((run_dir / "config.json").read_text(encoding="utf-8"))
+    assert config["n_questions"] == 3 and config["n_dataset"] == 6  # a subset of the 6
+    summary = RunSummary.model_validate(
+        json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    )
+    assert summary.n == 3 and summary.n_completed == 3 and summary.n_dataset == 6
     for rec in records:
         assert rec.mode == "agent" and rec.terminated_by == "final_answer"
         assert rec.tool_calls >= 2 and rec.steps >= 2  # search_filings + final_answer

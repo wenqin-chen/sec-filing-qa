@@ -4,7 +4,10 @@ Honesty rules baked in (SPEC 7 and 9):
 
 * The table shape is fixed by ``configs/*.yaml``, not by what has been run: a config without a
   completed run prints ``pending (not run)`` with the reason (missing key, missing index), and
-  a run that stopped early prints ``partial (done/n)``. Rows are never omitted.
+  a run that stopped early prints ``partial (done/n)``, and a ``--limit`` run prints
+  ``subset (done/dataset)``. Rows are never omitted.
+* A row shows its widest run: a ``--limit`` smoke or pilot run finished after the full row can
+  never displace it (``latest_summary`` orders by ``n``, then ``n_completed``, then time).
 * Smoke configs (``mock`` / ``scripted`` providers) are excluded from the tables by design and
   listed in a footnote, so a CI number can never be mistaken for a benchmark number.
 * Retrieval-only rows (``provider: mock:abstain``) show retrieval metrics only.
@@ -99,22 +102,35 @@ def load_configs(configs_dir: Path) -> list[EvalConfig]:
 
 
 def latest_summary(results_dir: Path, name: str) -> tuple[RunSummary, Path] | None:
-    """The most recently finished ``summary.json`` under ``results/<name>/*/`` (or ``None``)."""
+    """The ``summary.json`` under ``results/<name>/*/`` that the row should show (or ``None``).
+
+    Widest run first (``n``: a ``--limit`` subset never displaces a full row), then the most
+    completed, then the most recently finished; the run id breaks exact ties.
+    """
     root = Path(results_dir) / name
     if not root.is_dir():
         return None
-    found: list[tuple[datetime, str, RunSummary, Path]] = []
+    found: list[tuple[int, int, datetime, str, RunSummary, Path]] = []
     for path in root.glob(f"*/{SUMMARY_NAME}"):
         try:
             summary = RunSummary.model_validate(json.loads(path.read_text(encoding="utf-8")))
         except (OSError, ValueError, TypeError) as exc:
             log.warning("summary_unreadable", path=str(path), error=str(exc))
             continue
-        found.append((summary.finished_at, path.parent.name, summary, path.parent))
+        found.append(
+            (
+                summary.n,
+                summary.n_completed,
+                summary.finished_at,
+                path.parent.name,
+                summary,
+                path.parent,
+            )
+        )
     if not found:
         return None
-    found.sort(key=lambda item: (item[0], item[1]))
-    _, _, summary, run_dir = found[-1]
+    found.sort(key=lambda item: item[:4])
+    summary, run_dir = found[-1][4], found[-1][5]
     return summary, run_dir
 
 
@@ -157,6 +173,9 @@ def _usd(value: float | None) -> str:
 def _status(row: _Row) -> str:
     if row.summary is None:
         return f"pending (not run): {row.cfg.pending_reason}"
+    n_dataset = row.summary.n_dataset
+    if n_dataset is not None and row.summary.n < n_dataset:
+        return f"subset ({row.summary.n_completed}/{n_dataset})"
     if row.summary.n_completed < row.summary.n:
         return f"partial ({row.summary.n_completed}/{row.summary.n})"
     return "complete"
@@ -276,7 +295,8 @@ def render_results_md(results_dir: Path, configs_dir: Path, *, now: datetime | N
         f"({n_complete} complete, {n_pending} pending of {len(rows)} rows).",
         "",
         "Every number below comes from a committed `summary.json`; pending rows have not been "
-        "run and partial rows stopped early. FinanceBench open set, 150 questions, one fixed "
+        "run, partial rows stopped early and subset rows were run with `--limit`. FinanceBench "
+        "open set, 150 questions, one fixed "
         "judge per row. 95% intervals are percentile bootstraps (2000 resamples, seed 0): at "
         "n = 150 they span roughly ±7–8 pp, and overlapping intervals are not evidence of a "
         "difference.",

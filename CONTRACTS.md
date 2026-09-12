@@ -377,6 +377,7 @@ class RunSummary(Frozen):
     run_id: str
     n: int
     n_completed: int
+    n_dataset: int | None = None  # questions available before `limit`; n < n_dataset = subset run
     metrics: dict[
         str, float | None
     ]  # accuracy, abstain_rate, hallucination_rate, numeric_match_rate, numeric_coverage,

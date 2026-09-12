@@ -504,7 +504,8 @@ def summarize(
     (non-abstained) records; ``faithfulness`` over records the faithfulness judge scored.
     ``ci95`` holds percentile-bootstrap intervals for every rate with at least two samples.
     Run-level provenance comes from ``config.json`` next to the predictions when present, else
-    from the records themselves.
+    from the records themselves; ``n_dataset`` (the question count before ``limit``) is only
+    known from ``config.json`` and stays ``None`` without it.
 
     Raises:
         ConfigError: when the predictions file is missing or malformed.
@@ -515,6 +516,8 @@ def summarize(
     completed = [rec for rec in all_records if not rec.error]
     n_total = int(config.get("n_questions") or len(all_records))
     n_total = max(n_total, len(all_records))
+    raw_dataset = config.get("n_dataset")
+    n_dataset = max(int(raw_dataset), n_total) if raw_dataset is not None else None
 
     metrics = _metrics(completed, n_total)
     samples = _indicators(completed)
@@ -541,6 +544,7 @@ def summarize(
         run_id=str(config.get("run_id") or (first.run_id if first else "")),
         n=n_total,
         n_completed=len(completed),
+        n_dataset=n_dataset,
         metrics=metrics,
         ci95=ci95,
         by_question_type=_by_question_type(completed),

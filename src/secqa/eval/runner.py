@@ -554,6 +554,7 @@ def _write_config(
     cfg: EvalConfig,
     harness: _Harness,
     questions: Sequence[FBQuestion],
+    n_dataset: int,
     cassette_dir: Path | None,
     started_at: datetime,
 ) -> None:
@@ -574,6 +575,7 @@ def _write_config(
         "prompt_hashes": harness.prompt_hashes,
         "models_yaml_as_of": harness.prices.as_of.isoformat(),
         "n_questions": len(questions),
+        "n_dataset": n_dataset,
         "question_ids": [q.id for q in questions],
         "cassettes": str(cassette_dir) if cassette_dir is not None else None,
         "started_at": started_at.isoformat(),
@@ -609,7 +611,8 @@ def run_eval(
     """Evaluate ``cfg`` over ``questions`` and return the run directory.
 
     Args:
-        cfg: The row to run (``cfg.limit`` truncates ``questions``).
+        cfg: The row to run (``cfg.limit`` truncates ``questions``; ``config.json`` keeps the
+            untruncated count as ``n_dataset`` so a limited run reports as a subset).
         questions: FinanceBench questions (or the fixture questions) in the order to run.
         store: The index (read-only is fine); its manifest identifies the index in every record.
         out_dir: ``results/``; the run lands in ``<out_dir>/<cfg.name>/<run_id>/``.
@@ -678,7 +681,7 @@ def run_eval(
         done = {rec.financebench_id for rec in read_records(pred_path)}
     started_at = datetime.now(UTC)
     if not (run_dir / CONFIG_NAME).is_file():
-        _write_config(run_dir, cfg, harness, selected, run_cassettes, started_at)
+        _write_config(run_dir, cfg, harness, selected, len(questions), run_cassettes, started_at)
 
     spent = (
         sum(rec.cost_usd + rec.judge_cost_usd for rec in read_records(pred_path)) if done else 0.0
@@ -692,6 +695,7 @@ def run_eval(
         model=harness.provider.model,
         judge=harness.judge.model,
         n_questions=len(selected),
+        n_dataset=len(questions),
         n_done=len(done),
         cassettes=str(run_cassettes) if run_cassettes else None,
     )

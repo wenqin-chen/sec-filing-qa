@@ -126,6 +126,9 @@ uv run --no-sync secqa eval --config configs/rag_hybrid_claude.yaml             
 
 Order of operations for a published row: smoke (10) → pilot (30) → cost extrapolation → full
 row within `max_total_cost_usd`. Runs resume: done ids are skipped and cassette hits are free.
+A `--limit` run is recorded with `n_dataset` (the untruncated count) and renders as
+`subset (done/150)`; `secqa report` always shows a row's widest run, so the smoke and pilot
+runs above never replace the full row.
 `eval-full.yml` runs the same steps from CI on dispatch and opens a pull request with the
 results directory.
 
