@@ -13,9 +13,10 @@ import pytest
 
 from secqa.core.contracts import EvalRecord, FBQuestion, RunSummary
 from secqa.core.errors import ConfigError, ProviderError
+from secqa.core.ids import sha256_hex
 from secqa.embeddings import HashingEmbedder
 from secqa.eval.financebench import load_questions_jsonl
-from secqa.eval.judge import JUDGE_PROMPT_NAMES, RuleJudge
+from secqa.eval.judge import JUDGE_PROMPT_NAMES, RATIONALE_DIGEST_PREFIX, RuleJudge
 from secqa.eval.metrics import read_records
 from secqa.eval.runner import (
     EvalConfig,
@@ -378,6 +379,40 @@ def test_llm_judge_path_records_verdicts_and_cost(
     assert all(rec.error and "judge:" in rec.error for rec in records)
     # judge messages must not include the effort other than 'low'
     assert all(call["effort"] == "low" for call in judge.calls)
+
+
+def test_llm_judge_rationale_is_persisted_as_a_digest_only(
+    store: DuckDBStore, questions: list[FBQuestion], prices: PriceTable, tmp_path: Path
+) -> None:
+    """The correctness judge sees the gold answer and is asked to name the decisive difference,
+    so its rationale restates dataset text; predictions.jsonl must carry only its digest."""
+    gold = questions[0]
+    rationale = (
+        f"The reference answer {gold.answer} to '{gold.question}' matches the prediction; "
+        f"the justification says: {gold.justification}"
+    )
+    judge = FixedProvider(
+        parsed={"label": "correct", "rationale": rationale},
+        text=json.dumps({"label": "correct", "rationale": rationale}),
+        provider="anthropic",
+        model="claude-test",
+    )
+    cfg = rag_cfg(name="rag_judged_leak", judge="anthropic:claude-test", limit=1)
+    run_dir = run_eval(
+        cfg, questions, store, out_dir=tmp_path / "results", prices=prices, judge=judge
+    )
+    persisted = (run_dir / "predictions.jsonl").read_text(encoding="utf-8")
+    # The gold *answer* is not on this list: the extractive mock quotes the public-domain filing
+    # sentence that states the figure, which is our prediction and may be persisted.
+    for leak in (rationale, gold.question, gold.justification):
+        assert leak not in persisted
+    for text in DATASET_TEXT:
+        assert text not in persisted
+    rec = read_records(run_dir / "predictions.jsonl")[0]
+    assert rec.judge is not None and rec.judge.label == "correct"
+    assert rec.judge.rationale == f"{RATIONALE_DIGEST_PREFIX}{sha256_hex(rationale)}"
+    # The judge itself still saw the full gold context; only the persisted form is redacted.
+    assert gold.answer in judge.calls[0]["messages"][0].content
 
 
 def test_judge_object_override_is_accepted(

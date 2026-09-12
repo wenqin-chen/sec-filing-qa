@@ -89,7 +89,8 @@ uv run --no-sync python scripts/check_page_indexing.py --n 25 --seed 0 --min-pas
 `models_yaml_as_of`, provider / model / mode / embedder / strategy / k, our `answer_text`,
 `value`, `unit`, `abstained`, `grounded`, `citations` (with store snippets of the *filing*
 text, which is public domain), `retrieved_pages` and `gold_pages` as `(doc_name, page_num)`
-pairs, the retrieval metrics, `numeric_match`, judge and faithfulness verdicts, the failure
+pairs, the retrieval metrics, `numeric_match`, judge and faithfulness verdicts (an LLM judge's
+rationale only as `sha256:<digest>`; the text stays in the cassette), the failure
 class, usage, costs, latencies, steps, tool calls and `terminated_by`. It never contains the
 question, the gold answer, the justification or the evidence text (CC-BY-NC-4.0, ADR-08).
 `secqa rescore` joins ids back to the local dataset cache.

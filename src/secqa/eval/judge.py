@@ -7,8 +7,11 @@ Design (SPEC section 7):
   to :data:`JUDGE_VERSION`. Editing a prompt is a new judge version and every row is re-judged
   from cassettes.
 * :func:`judge_correctness` sees the question, gold answer, justification and the prediction and
-  returns a tri-state label. :func:`judge_faithfulness` sees the prediction and its cited
-  passages *only* (gold hidden), extracts atomic claims and counts the supported ones.
+  returns a tri-state label. Its free-text rationale restates that CC-BY-NC gold text, so the
+  verdict carries only ``sha256:<digest>`` of it (:func:`redact_rationale`); the verbatim reply
+  lives in the run's cassette, never in ``predictions.jsonl`` (CONTRACTS rule 5).
+  :func:`judge_faithfulness` sees the prediction and its cited passages *only* (gold hidden),
+  extracts atomic claims and counts the supported ones.
 * :class:`RuleJudge` (``judge: rule`` in a config) is the key-free judge for CI and mock rows:
   abstention detection plus :func:`~secqa.eval.metrics.numeric_match`; a free-text answer it
   cannot decide is left unscored (``None``), never guessed.
@@ -72,6 +75,8 @@ FAITHFULNESS_MAX_TOKENS = 1024
 PROVISIONAL_KAPPA = 0.6
 LABELS: tuple[str, ...] = ("correct", "incorrect", "abstain")
 PASSAGE_MAX_CHARS = 2000
+RATIONALE_DIGEST_PREFIX = "sha256:"
+"""Prefix of a persisted LLM-judge rationale: the digest of the text, never the text."""
 
 JUDGE_SCHEMA: dict[str, Any] = {
     "title": "judge_correctness",
@@ -243,10 +248,28 @@ def parse_faithfulness(parsed: dict[str, Any] | None, text: str) -> list[tuple[s
 # ---------------------------------------------------------------------------------------------
 
 
+def redact_rationale(rationale: str) -> str:
+    """Persistable form of an LLM judge rationale: ``sha256:<hex>``, or ``''`` when empty.
+
+    The correctness judge is shown the gold answer and justification and asked to name the
+    decisive difference, so its rationale routinely quotes CC-BY-NC dataset text. Every
+    :class:`JudgeVerdict` is written to ``predictions.jsonl`` (committed under ``results/``),
+    which must carry no question / answer / evidence text (CONTRACTS rule 5), so only the
+    digest is kept; the verbatim reply stays in the run's cassette (a Release asset) and the
+    digest identifies that reply. The rule judge's rationale is built from our own prediction
+    only and is stored as is.
+    """
+    if not rationale:
+        return ""
+    return f"{RATIONALE_DIGEST_PREFIX}{sha256_hex(rationale)}"
+
+
 def judge_correctness(q: FBQuestion, pred: Answer, judge: LLMProvider) -> JudgeVerdict:
     """Tri-state correctness verdict from ``judge`` (effort low, JSON-schema output).
 
     A provider refusal is a parse failure (no label was produced), never a silent "incorrect".
+    The verdict's ``rationale`` is the digest of the judge's rationale (:func:`redact_rationale`),
+    not its text.
 
     Raises:
         JudgeParseError: when the reply carries no valid label.
@@ -264,7 +287,7 @@ def judge_correctness(q: FBQuestion, pred: Answer, judge: LLMProvider) -> JudgeV
     label, rationale = parse_correctness(response.parsed, response.text)
     verdict = JudgeVerdict(
         label=label,  # type: ignore[arg-type]  # validated against LABELS in parse_correctness
-        rationale=rationale,
+        rationale=redact_rationale(rationale),
         judge_model=f"{response.provider}:{response.model}",
         judge_version=JUDGE_VERSION,
         usage=response.usage,

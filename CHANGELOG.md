@@ -81,6 +81,14 @@ with real rows for both providers, a verified Cloud Run deployment).
   a table figure), the percent equivalence applies at scale 1 only, and `numeric_match_scale`
   reports the matched scale (the rule judge's rationale names it).
 
+- **eval**: the LLM correctness judge's free-text rationale was persisted verbatim in
+  `predictions.jsonl`. The judge is shown the gold answer and justification and asked to name
+  the decisive difference, so that rationale restates CC-BY-NC-4.0 dataset text inside a
+  committed results file (ADR-08). `JudgeVerdict.rationale` now carries `sha256:<digest>` of the
+  judge's rationale (`redact_rationale`); the verbatim reply stays in the run's cassette, which
+  is a Release asset and never committed. The rule judge's rationale (built from our own
+  prediction only) is unchanged.
+
 ### Not yet done (tracked, not claimed)
 
 - No FinanceBench row has been run; every cell in `RESULTS.md` is `pending (not run)`.
