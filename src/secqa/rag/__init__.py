@@ -13,6 +13,7 @@ from secqa.rag.pipeline import (
     page_to_chunk,
 )
 from secqa.rag.prompts import (
+    AGENT_SYSTEM,
     PROMPT_NAMES,
     PROMPTS_DIR,
     build_closed_book_prompt,
@@ -30,6 +31,7 @@ from secqa.rag.schemas import (
 
 __all__ = [
     "ABSTAIN_TEXT",
+    "AGENT_SYSTEM",
     "ANSWER_SCHEMA",
     "PROMPTS_DIR",
     "PROMPT_NAMES",

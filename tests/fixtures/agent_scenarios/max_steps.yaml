@@ -1,0 +1,22 @@
+# Synthetic ScriptedProvider scenario for tests/agent/test_loop.py::test_max_steps_forces_final_call.
+# Two tool-enabled turns keep searching; the third turn answers the forced tools-off final call
+# (the loop is run with max_steps=2, so turn 3 must see the "Stop using tools" instruction).
+model: scripted-agent-max-steps
+turns:
+  - match: "net sales"
+    tool_calls:
+      - name: search_filings
+        arguments: {query: "total net sales fiscal 2023", ticker: null, fiscal_year: null, form: null, k: 3}
+  - match: "chunk:"
+    tool_calls:
+      - name: search_filings
+        arguments: {query: "operating income", ticker: null, fiscal_year: null, form: null, k: 3}
+  - match: "Stop using tools"
+    parsed:
+      answer: "INSUFFICIENT EVIDENCE"
+      value: null
+      unit: null
+      citations: []
+      calculation: null
+      abstain: true
+    text: '{"answer": "INSUFFICIENT EVIDENCE", "value": null, "unit": null, "citations": [], "calculation": null, "abstain": true}'

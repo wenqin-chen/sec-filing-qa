@@ -39,8 +39,10 @@ PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 RAG_SYSTEM = "rag_system.md"
 CLOSED_BOOK_SYSTEM = "closed_book_system.md"
 ORACLE_SYSTEM = "oracle_system.md"
-PROMPT_NAMES: tuple[str, ...] = (RAG_SYSTEM, CLOSED_BOOK_SYSTEM, ORACLE_SYSTEM)
-"""Every prompt file the rag module ships; :func:`prompt_hashes` must cover all of them."""
+AGENT_SYSTEM = "agent_system.md"
+"""The agent loop's system prompt; owned by :mod:`secqa.agent`, hashed here with the rest."""
+PROMPT_NAMES: tuple[str, ...] = (RAG_SYSTEM, CLOSED_BOOK_SYSTEM, ORACLE_SYSTEM, AGENT_SYSTEM)
+"""Every prompt file under :data:`PROMPTS_DIR`; :func:`prompt_hashes` must cover all of them."""
 
 PASSAGES_HEADER = "Passages (cite by ref; quote verbatim):"
 SECTION_MAX_CHARS = 40
@@ -75,7 +77,7 @@ def prompt_hash(name: str) -> str:
 def prompt_hashes() -> dict[str, str]:
     """``{file name: sha256}`` for every ``*.md`` under :data:`PROMPTS_DIR`, sorted by name.
 
-    Reads the files on every call (three small files) so a test that edits a prompt on disk sees
+    Reads the files on every call (four small files) so a test that edits a prompt on disk sees
     the new hash without clearing caches.
     """
     files = sorted(PROMPTS_DIR.glob("*.md"))
@@ -170,6 +172,7 @@ def _one_line(text: str) -> str:
 
 
 __all__ = [
+    "AGENT_SYSTEM",
     "CLOSED_BOOK_SYSTEM",
     "ORACLE_SYSTEM",
     "PASSAGES_HEADER",
