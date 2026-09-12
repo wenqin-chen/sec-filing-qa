@@ -448,7 +448,8 @@ class EvalRecord(Frozen):
     steps: int
     tool_calls: int
     terminated_by: Terminated
-    error: str | None = None
+    error: str | None = None  # the ANSWER failed (provider error): unscored, not completed
+    judge_error: str | None = None  # a judge call failed: answer kept and scored, verdict None
     timestamp: datetime
 
 

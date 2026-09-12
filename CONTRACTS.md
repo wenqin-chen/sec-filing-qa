@@ -367,7 +367,8 @@ class EvalRecord(Frozen):  # one line of predictions.jsonl — contains NO datas
     steps: int
     tool_calls: int
     terminated_by: Terminated
-    error: str | None = None
+    error: str | None = None  # the answer failed (ProviderError): record is unscored and not completed
+    judge_error: str | None = None  # a judge call failed: answer kept and scored, that verdict is None
     timestamp: datetime
 
 

@@ -233,6 +233,43 @@ def test_classify_failure_taxonomy() -> None:
     assert classify_failure(closed) == "reasoning_error"
 
 
+def test_judge_error_keeps_the_record_scored(tmp_path: Path) -> None:
+    """A failed judge call is not an answer failure: the record stays completed and scorable.
+
+    Regression: judge failures used to be folded into ``error``, which unscored the record,
+    shrank ``n_completed`` and misfiled a scorable answer as ``tool_error``.
+    """
+    cite = [verified_citation()]
+    judged_out = make_record("j1", numeric=True, citations=cite, judge_error="judge: parse")
+    assert effective_label(judged_out) == "correct"
+    assert classify_failure(judged_out) == "none"
+    wrong = make_record("j2", numeric=False, grounded=True, citations=cite, judge_error="judge: x")
+    assert classify_failure(wrong) == "calculation_error"
+    # No numeric and no verdict: unscored, but still completed (not an error).
+    free_text = make_record("j3", numeric=None, judge_error="judge: parse")
+    assert effective_label(free_text) is None
+    assert classify_failure(free_text) == "none"
+
+    records = [
+        judged_out,
+        wrong,
+        free_text,
+        make_record("j4", numeric=True, judge_label="correct", citations=cite),
+        make_record("j5", error="provider: timeout"),
+    ]
+    summary = summarize(write_predictions(tmp_path / "run", records), n_boot=50, seed=0)
+    assert summary.n == 5 and summary.n_completed == 4
+    m = summary.metrics
+    assert m["error_rate"] == pytest.approx(1 / 5)
+    assert m["judge_error_rate"] == pytest.approx(3 / 4)
+    assert m["n_scored"] == 3
+    assert m["accuracy"] == pytest.approx(2 / 3)
+    assert m["numeric_match_rate"] == pytest.approx(2 / 3)
+    assert summary.failures["tool_error"] == 1
+    assert summary.failures["calculation_error"] == 1
+    assert summary.failures["none"] == 3
+
+
 # ---- summarize ----------------------------------------------------------------------------
 
 

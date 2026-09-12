@@ -272,7 +272,9 @@ def effective_label(rec: EvalRecord) -> EffectiveLabel | None:
 
     Order: an abstention is an abstention; a defined ``numeric_match`` overrides the judge;
     otherwise the judge's label; otherwise unscored (a rule-judged free-text answer).
-    Records with an ``error`` are unscored.
+    Records with an ``error`` (the answer itself failed) are unscored. A ``judge_error`` does
+    not unscore a record: the answer is intact, so ``numeric_match`` and abstention still
+    decide, and only a free-text answer without a verdict falls through to ``None``.
     """
     if rec.error:
         return None
@@ -437,6 +439,11 @@ def _metrics(records: Sequence[EvalRecord], n_total: int) -> dict[str, float | N
         else None
     )
     metrics["error_rate"] = float(n_total - n_completed) / n_total if n_total else None
+    # Judge failures do not remove a record from ``records`` (the answer is scored); this rate
+    # makes them visible next to ``faith_coverage`` and ``n_scored`` instead.
+    metrics["judge_error_rate"] = (
+        _rate([rec.judge_error is not None for rec in records]) if records else None
+    )
     metrics["tool_calls_mean"] = _mean([float(rec.tool_calls) for rec in records])
     metrics["steps_mean"] = _mean([float(rec.steps) for rec in records])
     metrics["retrieval_ms_p50"] = _percentile([rec.retrieval_ms for rec in records], 50)
@@ -490,7 +497,9 @@ def summarize(
     """Aggregate ``predictions.jsonl`` into a :class:`RunSummary` and write ``summary.json``.
 
     Records with an ``error`` count towards ``n`` but not ``n_completed`` and are excluded from
-    every rate. Retrieval metrics average over records that have gold pages and are not
+    every rate; records with only a ``judge_error`` are completed and scored like any other
+    (their missing verdict shows up in ``n_scored``, ``faith_coverage`` and
+    ``judge_error_rate``). Retrieval metrics average over records that have gold pages and are not
     ``closed_book``; ``citation_verified_rate`` and ``grounded_rate`` average over answered
     (non-abstained) records; ``faithfulness`` over records the faithfulness judge scored.
     ``ci95`` holds percentile-bootstrap intervals for every rate with at least two samples.

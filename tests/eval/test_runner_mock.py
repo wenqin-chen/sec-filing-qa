@@ -375,10 +375,48 @@ def test_llm_judge_path_records_verdicts_and_cost(
     for rec in records:
         assert rec.judge is not None and rec.judge.judge_model == "anthropic:claude-test"
         assert rec.judge_cost_usd > 0
-    # the faithfulness judge got the same fixed JSON (no 'claims') -> recorded as a judge error
-    assert all(rec.error and "judge:" in rec.error for rec in records)
+    # The faithfulness judge got the same fixed JSON (no 'claims') -> a judge error. It is
+    # recorded in judge_error, NOT in error: the answer, its correctness verdict and its
+    # numeric_match are intact, so the record stays completed and scored.
+    assert all(rec.error is None for rec in records)
+    assert all(rec.judge_error and "judge faithfulness:" in rec.judge_error for rec in records)
+    assert all(rec.faith is None for rec in records)
+    assert records[0].numeric_match is True and records[0].failure == "none"
+    summary = RunSummary.model_validate(
+        json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    )
+    assert summary.n == 2 and summary.n_completed == 2
+    assert summary.metrics["error_rate"] == 0.0
+    assert summary.metrics["judge_error_rate"] == 1.0
+    assert summary.metrics["accuracy"] is not None
+    assert summary.failures.get("tool_error", 0) == 0
     # judge messages must not include the effort other than 'low'
     assert all(call["effort"] == "low" for call in judge.calls)
+
+
+def test_correctness_judge_failure_does_not_block_faithfulness(
+    store: DuckDBStore, questions: list[FBQuestion], prices: PriceTable, tmp_path: Path
+) -> None:
+    """The two judge calls are independent: a correctness parse failure still lets the
+    faithfulness judge run, and the record keeps its numeric score."""
+    faith_only = {"claims": [{"claim": "net sales were $1,577 million", "supported": True}]}
+    judge = FixedProvider(
+        parsed=faith_only,
+        text=json.dumps(faith_only),
+        provider="anthropic",
+        model="claude-test",
+    )
+    cfg = rag_cfg(name="rag_judged_corr_fail", judge="anthropic:claude-test", limit=1)
+    run_dir = run_eval(
+        cfg, questions, store, out_dir=tmp_path / "results", prices=prices, judge=judge
+    )
+    rec = read_records(run_dir / "predictions.jsonl")[0]
+    assert rec.error is None
+    assert rec.judge is None and rec.judge_error and "judge correctness:" in rec.judge_error
+    assert rec.faith is not None and rec.faith.claims == 1 and rec.faith.score == 1.0
+    assert rec.numeric_match is True and rec.failure == "none"
+    assert rec.judge_cost_usd > 0  # the faithfulness call was made and paid for
+    assert len(judge.calls) == 2  # correctness (failed to parse) + faithfulness
 
 
 def test_llm_judge_rationale_is_persisted_as_a_digest_only(

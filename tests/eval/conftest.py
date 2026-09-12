@@ -183,6 +183,7 @@ def make_record(
     citations: list[Citation] | None = None,
     terminated_by: str = "single_shot",
     error: str | None = None,
+    judge_error: str | None = None,
     cost_usd: float = 0.01,
     latency_ms: float = 100.0,
     run_id: str = "abc1234_20260911-1200",
@@ -248,6 +249,7 @@ def make_record(
         tool_calls=0,
         terminated_by=terminated_by,  # type: ignore[arg-type]
         error=error,
+        judge_error=judge_error,
         timestamp=datetime(2026, 9, 11, 12, 30, tzinfo=UTC),
     )
 

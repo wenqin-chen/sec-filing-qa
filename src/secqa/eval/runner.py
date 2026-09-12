@@ -16,10 +16,14 @@ by the summary), and ``oracle`` records the supplied gold pages, so its recall i
 construction and is shown for completeness only.
 
 Failure policy: a :class:`~secqa.core.errors.ProviderError` (vendor outage, bad request) is
-recorded on the question and the run continues; a judge failure keeps the answer and records the
-judge error; :class:`~secqa.core.errors.CassetteMiss` in replay mode and every other exception
-propagate, because they signal a broken setup rather than a bad question. Cassettes are recorded
-under ``<cassette_dir>/<run_id>/`` so nothing is paid twice and the run can be re-scored offline.
+recorded in ``EvalRecord.error`` and the run continues (the question counts towards ``n`` but not
+``n_completed``); a judge failure (:class:`~secqa.eval.judge.JudgeParseError` or a provider error
+on the judge call) keeps the answer and every deterministic metric, records the failure in
+``EvalRecord.judge_error`` and leaves only that verdict ``None``, so the question stays completed
+and scorable by ``numeric_match``; :class:`~secqa.core.errors.CassetteMiss` in replay mode and
+every other exception propagate, because they signal a broken setup rather than a bad question.
+Cassettes are recorded under ``<cassette_dir>/<run_id>/`` so nothing is paid twice and the run
+can be re-scored offline.
 """
 
 from __future__ import annotations
@@ -335,7 +339,13 @@ class _Harness:
         return self.agent.run(q.question, filters=filters, request_id=q.id)
 
     def record(self, q: FBQuestion, answer: Answer | None, error: str | None) -> EvalRecord:
-        """Score one answer (deterministic metrics + judge) into an :class:`EvalRecord`."""
+        """Score one answer (deterministic metrics + judge) into an :class:`EvalRecord`.
+
+        ``error`` is the answer-level failure (``answer`` is then ``None``) and is the only thing
+        that makes a record unscored. A failing judge call is caught here and recorded in
+        ``judge_error``; the answer, its ``numeric_match``, citations and retrieval metrics are
+        kept, and the summary still counts the record as completed.
+        """
         cfg = self.cfg
         gold_pages = distinct_pages((item.doc_name, item.page_num) for item in q.evidence)
         judge_error: str | None = None
@@ -349,12 +359,26 @@ class _Harness:
                 (view.doc_name, view.page_num) for view in answer.retrieved
             )[:RETRIEVED_PAGES_KEPT]
             hits = self._hits(answer.retrieved)
+            # The two judge calls are independent: a faithfulness failure must not discard a
+            # correctness verdict already in hand, and vice versa. Either failure lands in
+            # ``judge_error`` -- never in ``error`` -- so the answer stays scored (numeric_match,
+            # citations, retrieval metrics) and the record stays in ``n_completed``.
+            judge_failures: list[str] = []
             try:
                 verdict = self.judge.correctness(q, answer)
+            except (JudgeParseError, ProviderError) as exc:
+                judge_failures.append(f"judge correctness: {exc}")
+                log.warning(
+                    "judge_failed", financebench_id=q.id, call="correctness", error=str(exc)
+                )
+            try:
                 faith = self.judge.faithfulness(answer)
             except (JudgeParseError, ProviderError) as exc:
-                judge_error = f"judge: {exc}"
-                log.warning("judge_failed", financebench_id=q.id, error=str(exc))
+                judge_failures.append(f"judge faithfulness: {exc}")
+                log.warning(
+                    "judge_failed", financebench_id=q.id, call="faithfulness", error=str(exc)
+                )
+            judge_error = "; ".join(judge_failures) or None
             judge_usage = Usage()
             if verdict is not None:
                 judge_usage = judge_usage + verdict.usage
@@ -369,7 +393,6 @@ class _Harness:
         verified_rate = (
             sum(1 for c in citations if c.verified) / len(citations) if citations else None
         )
-        errors = [text for text in (error, judge_error) if text]
         provisional = EvalRecord(
             financebench_id=q.id,
             question_type=q.question_type,
@@ -412,7 +435,8 @@ class _Harness:
             steps=answer.steps if answer else 0,
             tool_calls=answer.tool_calls if answer else 0,
             terminated_by=answer.terminated_by if answer else "error",
-            error="; ".join(errors) or None,
+            error=error,
+            judge_error=judge_error,
             timestamp=datetime.now(UTC),
         )
         return provisional.model_copy(update={"failure": classify_failure(provisional)})
@@ -713,6 +737,7 @@ def run_eval(
                 spent_usd=round(spent, 4),
                 seconds=round(time.perf_counter() - started, 2),
                 error=record.error,
+                judge_error=record.judge_error,
             )
 
     summary = summarize(pred_path, seed=cfg.seed)

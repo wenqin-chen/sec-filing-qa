@@ -97,7 +97,8 @@ All computed by `secqa.eval.metrics` from `EvalRecord`s; every one has a unit te
 ### Failure taxonomy
 
 Every record gets one class, assigned by `classify_failure` in this fixed order (first match
-wins): a record with an `error` → `tool_error`; an effective label other than `incorrect` →
+wins): a record with an `error` (the answer failed; a `judge_error` alone does not count)
+→ `tool_error`; an effective label other than `incorrect` →
 `none`; `terminated_by` in {`budget`, `max_steps`} → `budget`; `terminated_by == 'error'` →
 `tool_error`; no gold page in the top-10 (modes with retrieval) → `retrieval_miss`; no verified
 citation or not grounded → `unverified_citation`; a defined `numeric_match` of `False` on a
