@@ -111,12 +111,20 @@ Contributor on the resource group, GitHub variables), `infra/azure/main.bicep`,
 `.github/workflows/deploy-azure.yml`.
 
 The Bicep template declares a Log Analytics workspace, a Container Apps environment and the app:
-external HTTPS ingress on 8080, `minReplicas 0` / `maxReplicas 2`, 1 vCPU / 2 GiB, the public
-GHCR `full` image (no registry credential), vendor keys as `@secure()` parameters that become
-app secrets (empty = not set). The workflow (tag `v*` or dispatch; guarded by
+external HTTPS ingress on 8080, `minReplicas 0` / `maxReplicas 2`, 1 vCPU / 2 GiB, the GHCR
+`full` image pulled anonymously (no registry credential), vendor keys as `@secure()` parameters
+that become app secrets (empty = not set). The workflow (tag `v*` or dispatch; guarded by
 `DEPLOY_AZURE == 'true'`) logs in with `azure/login` OIDC, runs `az deployment group create
 --template-file infra/azure/main.bicep`, then performs the same `/readyz` + `/v1/ask` smoke and
 writes it to the job summary.
+
+The anonymous pull only works if the GHCR package is public, and a package first pushed by
+`build.yml` with `GITHUB_TOKEN` is private by default. One-time step after the first build:
+GitHub → Packages → `sec-filing-qa` → Package settings → Change visibility → Public (the `full`
+and `-slim` tags share that package). The deploy workflow checks the unauthenticated manifest
+fetch that Container Apps will perform and fails early, with that instruction, while the package
+is still private. Cloud Run is unaffected: it pulls the Artifact Registry mirror, which the
+workflow fills using the GHCR login.
 
 No local `az` CLI is assumed on the author's machine; everything Azure-side runs from CI or the
 portal. Until the workflow has one green run, the wording everywhere is "workflow written,

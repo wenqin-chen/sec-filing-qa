@@ -152,7 +152,8 @@ repository.
 **Decision.** `build.yml` builds the `full` and `slim` targets once and publishes them to
 `ghcr.io/<owner>/sec-filing-qa` tagged by commit SHA. Both deploy workflows consume that image
 by SHA: Cloud Run after mirroring it into Artifact Registry (Cloud Run pulls only from there),
-Container Apps directly from the public GHCR image via Bicep. Both are guarded by a repository
+Container Apps directly from GHCR via Bicep, anonymously, which requires the package to be made
+public once by hand (`GITHUB_TOKEN` creates it private). Both are guarded by a repository
 variable, authenticate with OIDC (WIF / federated credential; no JSON keys or client secrets),
 inject keys from the cloud's secret store, and end with the same smoke step (`/readyz` + one
 mock `/v1/ask`) pasted into the job summary. The container itself is cloud-agnostic: `PORT`,

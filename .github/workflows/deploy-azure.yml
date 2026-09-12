@@ -8,7 +8,10 @@
 #
 # build.yml fires on the same tag push and needs many minutes for the `full` target, so the job
 # first waits (bounded) for ghcr.io/<owner>/sec-filing-qa:<sha> to exist; otherwise the new
-# revision would fail to provision with an image-pull error.
+# revision would fail to provision with an image-pull error. The Bicep passes no registry
+# credential, so the job then checks that the image is pullable anonymously: a GHCR package first
+# pushed with GITHUB_TOKEN is private until switched to public by hand (infra/azure/README.md,
+# step 5), and Container Apps would otherwise fail the pull with an authorization error.
 #
 # Repository variables:
 #   DEPLOY_AZURE=true
@@ -80,6 +83,26 @@ jobs:
             sleep 30
           done
           echo "found ${IMAGE}"
+
+      - name: Check the image is pullable anonymously (Container Apps has no GHCR credential)
+        run: |
+          set -euo pipefail
+          # The wait above used the GITHUB_TOKEN login, which succeeds on a private package too.
+          # Repeat the registry handshake exactly as an anonymous puller would: an unauthenticated
+          # token for the repository's pull scope, then the manifest for the deployed tag.
+          REPO_PATH="${IMAGE%%:*}"; REPO_PATH="${REPO_PATH#ghcr.io/}"
+          TAG="${IMAGE##*:}"
+          TOKEN=$(curl -sS "https://ghcr.io/token?scope=repository:${REPO_PATH}:pull" \
+            | python3 -c 'import json, sys; raw = sys.stdin.read(); print(json.loads(raw).get("token", "") if raw.startswith("{") else "")')
+          STATUS=$(curl -sS -o /dev/null -w '%{http_code}' \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json' \
+            "https://ghcr.io/v2/${REPO_PATH}/manifests/${TAG}")
+          if [ "${STATUS}" != "200" ]; then
+            echo "::error::${IMAGE} is not pullable without a credential (HTTP ${STATUS}). Container Apps pulls it anonymously, so the GHCR package must be public: GitHub -> Packages -> sec-filing-qa -> Package settings -> Change visibility -> Public (infra/azure/README.md, step 5)."
+            exit 1
+          fi
+          echo "anonymous pull of ${IMAGE} allowed (HTTP 200)"
 
       - name: Azure login (OIDC)
         uses: azure/login@v2

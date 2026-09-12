@@ -2,6 +2,8 @@
 #   ghcr.io/<owner>/sec-filing-qa:<sha>, :latest, :vX.Y.Z          (target full)
 #   ghcr.io/<owner>/sec-filing-qa:<sha>-slim, :latest-slim, :vX.Y.Z-slim  (target slim)
 # The deploy workflows reference the full image by commit SHA so a deployment is reproducible.
+# A package first pushed with GITHUB_TOKEN is private; Container Apps pulls it anonymously, so the
+# package is switched to public once by hand after the first run (infra/azure/README.md, step 5).
 name: build
 
 on:

@@ -2,9 +2,11 @@
 //
 // Scope: an existing resource group. Creates (or updates in place) a Log Analytics workspace, a
 // Container Apps environment and one container app with external HTTPS ingress on port 8080,
-// min 0 / max 2 replicas and 1 vCPU / 2 GiB per replica. The image is the public `full` target
-// on GHCR, so no registry credential is needed. Secrets arrive as @secure() parameters and are
-// stored as Container Apps secrets; an empty value leaves that variable unset.
+// min 0 / max 2 replicas and 1 vCPU / 2 GiB per replica. The image is the `full` target on GHCR,
+// pulled anonymously (no configuration.registries entry): the package must be public, which is a
+// one-time switch in GitHub Packages after the first build.yml run (see README.md, step 5).
+// Secrets arrive as @secure() parameters and are stored as Container Apps secrets; an empty
+// value leaves that variable unset.
 //
 // Deploy: az deployment group create -g <rg> --template-file main.bicep --parameters image=...
 

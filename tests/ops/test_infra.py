@@ -49,6 +49,28 @@ class TestAzureBicep:
         assert "DEPLOY_AZURE" in readme
         assert "deployment not yet verified" in readme
 
+    def test_anonymous_ghcr_pull_documents_the_package_visibility_step(self) -> None:
+        """The template passes no ``configuration.registries`` credential, so Container Apps
+        pulls from GHCR anonymously. A package first pushed by ``build.yml`` with
+        ``GITHUB_TOKEN`` is private by default, so the one-time "make the package public" step
+        must be written down next to every claim that no registry credential is needed; the
+        ``full`` and ``-slim`` tags share one package, which the step must say."""
+        bicep = BICEP.read_text(encoding="utf-8")
+        assert "registries" not in bicep.split("resource app ")[1], (
+            "the app pulls anonymously; if a registry credential is added, drop this test"
+        )
+        assert "public" in bicep and "README.md" in bicep, "the header points at the setup step"
+        readme = (REPO / "infra" / "azure" / "README.md").read_text(encoding="utf-8")
+        assert "Change visibility" in readme and "Public" in readme
+        assert "GITHUB_TOKEN" in readme and "private" in readme, "says why the step exists"
+        assert "-slim" in readme, "both targets live in the same package"
+        assert "no registry credential is required" not in readme, "the old unconditional claim"
+        deploy = (REPO / "docs" / "DEPLOY.md").read_text(encoding="utf-8")
+        azure = deploy.split("## Azure Container Apps")[1].split("## Publishing the index")[0]
+        assert "Change visibility" in azure and "GITHUB_TOKEN" in azure
+        build = (REPO / ".github" / "workflows" / "build.yml").read_text(encoding="utf-8")
+        assert "private" in build and "infra/azure/README.md" in build
+
 
 class TestCloudRun:
     def test_env_example_is_yaml_without_secrets(self) -> None:

@@ -163,6 +163,32 @@ class TestDeploy:
         assert logins and logins[0] < wait_idx, "GHCR login precedes the manifest check"
         assert wf["permissions"]["packages"] == "read"
 
+    def test_azure_checks_anonymous_pull_between_the_wait_and_the_deploy(self) -> None:
+        """The Bicep passes no registry credential, so Container Apps pulls the GHCR image
+        anonymously, and a package first pushed with ``GITHUB_TOKEN`` is private by default. The
+        wait step's ``docker manifest inspect`` runs under the GHCR login and therefore passes on
+        a private package; a separate unauthenticated manifest fetch (token endpoint with the
+        pull scope, then ``/v2/<repo>/manifests/<tag>``) must sit between the wait and the
+        deploy and fail loudly with the "make the package public" instruction."""
+        wf = load_workflow("deploy-azure")
+        steps = _steps(wf, "deploy")
+        runs = [str(s.get("run", "")) for s in steps]
+        scripts = [str(s.get("with", {}).get("inlineScript", "")) for s in steps]
+        wait_idx = next(i for i, r in enumerate(runs) if 'docker manifest inspect "${IMAGE}"' in r)
+        deploy_idx = next(i for i, s in enumerate(scripts) if "az deployment group create" in s)
+        check_idx = next(i for i, r in enumerate(runs) if "https://ghcr.io/token?scope=" in r)
+        assert wait_idx < check_idx < deploy_idx, "wait, then anonymous check, then deploy"
+        check = runs[check_idx]
+        assert "/manifests/" in check and "/v2/" in check, "fetches the manifest of the exact tag"
+        assert "${IMAGE" in check, "checks the image the Bicep will deploy"
+        assert "secrets.GITHUB_TOKEN" not in check and not re.search(r"^\s*docker ", check, re.M), (
+            "must not reuse the authenticated docker login, which hides a private package"
+        )
+        assert '"200"' in check and "exit 1" in check and "::error::" in check
+        assert "Change visibility" in check and "infra/azure/README.md" in check, (
+            "the failure names the one-time fix"
+        )
+
     def test_cloudrun_flags_match_spec(self) -> None:
         wf = load_workflow("deploy-cloudrun")
         run = _run_text(wf, "deploy")

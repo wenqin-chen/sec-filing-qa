@@ -2,9 +2,10 @@
 
 `main.bicep` declares everything the app needs inside an existing resource group: a Log
 Analytics workspace, a Container Apps environment and the container app itself (external HTTPS
-ingress on port 8080, min 0 / max 2 replicas, 1 vCPU / 2 GiB). It pulls the public `full` image
-from GHCR, so no registry credential is required. Vendor keys are `@secure()` parameters that
-become Container Apps secrets; empty values leave the variable unset.
+ingress on port 8080, min 0 / max 2 replicas, 1 vCPU / 2 GiB). It pulls the `full` image from
+GHCR **anonymously** (no `configuration.registries` credential), so the GHCR package must be
+public; step 5 below makes it so, once. Vendor keys are `@secure()` parameters that become
+Container Apps secrets; empty values leave the variable unset.
 
 No local `az` CLI is assumed: the portal setup below is done once by hand, and
 `.github/workflows/deploy-azure.yml` runs the Bicep deployment from CI with an OIDC federated
@@ -34,6 +35,15 @@ credential (no client secret anywhere).
 | variable | `SECQA_INDEX_URL`        | published index tarball URL (empty = fixture index)|
 | variable | `SECQA_EMBEDDER`         | `local` (published index) or `hashing` (fixture)   |
 | secret   | `OPENAI_API_KEY` etc.    | optional; empty = not configured on the app        |
+
+5. Make the GHCR package public, after the first `build.yml` run. `build.yml` pushes with
+   `secrets.GITHUB_TOKEN`, and a package created that way is **private** by default, so
+   Container Apps (which pulls with no credential) would fail to provision the revision with an
+   image-pull authorization error. On GitHub: your profile (or organisation) → **Packages** →
+   `sec-filing-qa` → **Package settings** → **Danger zone** → **Change visibility** → **Public**.
+   Both the `full` and `-slim` tags live in that one package, so this is a single switch. The
+   deploy workflow verifies the anonymous pull path before it touches Azure and fails with a
+   pointer to this step if the package is still private.
 
 ## Deploying
 
