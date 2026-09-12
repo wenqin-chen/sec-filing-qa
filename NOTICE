@@ -1,0 +1,54 @@
+sec-filing-qa
+Copyright 2026 Wenqin Chen
+
+This product is licensed under the MIT License (see LICENSE).
+This NOTICE file carries third-party attributions; it is informational and not a licence.
+
+--------------------------------------------------------------------------------
+Data used for evaluation (not redistributed)
+--------------------------------------------------------------------------------
+
+FinanceBench
+  Islam, Kannappan, Kiela, Qian, Scherrer, Vidgen. "FinanceBench: A New Benchmark
+  for Financial Question Answering" (2023). Dataset: https://huggingface.co/datasets/PatronusAI/financebench
+  and https://github.com/patronus-ai/financebench
+  Licence: Creative Commons Attribution-NonCommercial 4.0 International (CC-BY-NC-4.0).
+  This repository uses FinanceBench for evaluation only. No question, answer,
+  justification or evidence text from the dataset is committed here; results files
+  under results/ carry only financebench_id values. The dataset is downloaded to a
+  gitignored directory at run time by `secqa data financebench`.
+
+SEC EDGAR
+  Filings (10-K, 10-Q), the company ticker file and the XBRL companyfacts API are
+  published by the U.S. Securities and Exchange Commission and are in the public
+  domain as works of the U.S. government. Access follows the SEC fair-access policy
+  (declared User-Agent with a contact address, at most 10 requests per second).
+
+--------------------------------------------------------------------------------
+Models
+--------------------------------------------------------------------------------
+
+BAAI/bge-small-en-v1.5 (Beijing Academy of Artificial Intelligence) - MIT licence.
+  Downloaded at build time into the `full` container image and at first use by the
+  `local` embedder; not vendored in this repository.
+
+OpenAI and Anthropic models are accessed through their public APIs under the
+respective vendor terms of service. Model identifiers and list prices used for cost
+accounting are recorded in src/secqa/eval/models.yaml with an `as_of` date.
+
+--------------------------------------------------------------------------------
+Third-party software
+--------------------------------------------------------------------------------
+
+This product depends on open-source packages installed from PyPI under their own
+licences, including (direct dependencies): DuckDB (MIT), FastAPI (MIT), Starlette
+(BSD-3-Clause), uvicorn (BSD-3-Clause), pydantic and pydantic-settings (MIT),
+httpx (BSD-3-Clause), tenacity (Apache-2.0), NumPy (BSD-3-Clause), pandas
+(BSD-3-Clause), scikit-learn (BSD-3-Clause), pypdfium2 (Apache-2.0 OR
+BSD-3-Clause; bundles PDFium, BSD-3-Clause), beautifulsoup4 (MIT), lxml
+(BSD-3-Clause), tiktoken (MIT), sqlglot (MIT), structlog (MIT OR Apache-2.0),
+typer (MIT), rich (MIT), slowapi (MIT), PyYAML (MIT), orjson (Apache-2.0 OR MIT),
+zstandard (BSD-3-Clause), datasets (Apache-2.0), sentence-transformers
+(Apache-2.0, optional extra), openai (Apache-2.0, optional extra), anthropic
+(MIT, optional extra). The authoritative licence text for each package is in its
+own distribution metadata; the pinned versions are in uv.lock.

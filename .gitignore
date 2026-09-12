@@ -32,8 +32,11 @@ data/index*.tar.zst
 *.duckdb
 *.duckdb.wal
 
-# Evaluation outputs and cassettes (results/<config>/<run_id>/ is committed explicitly, never by default)
-results/
+# Evaluation outputs: results/<config>/<run_id>/{config.json,predictions.jsonl,summary.json} is
+# committed (ids only, see NOTICE). Local mock smoke runs never are (SPEC section 9), and
+# cassettes are Release assets, never git.
+results/*_mock/
+results/**/cassettes/
 cassettes/*.tar.zst
 cassettes/*/
 
