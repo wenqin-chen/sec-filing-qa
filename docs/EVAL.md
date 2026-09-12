@@ -64,10 +64,15 @@ All computed by `secqa.eval.metrics` from `EvalRecord`s; every one has a unit te
 - **`numeric_match`** (strict, deterministic): the model's structured `value` against the
   *single* number in the gold answer. `None` (undefined) when the model gave no value or the gold
   answer contains zero or several numbers; otherwise equal within 1% relative tolerance, with
-  the ratio/percent equivalence of `textnum.numbers_equal` (0.12 vs 12) and unit-scale
-  equivalence (×1e3 / ×1e6 / ×1e9, because FinanceBench gold answers state table figures such as
-  `$1577.00` without the "in millions" the filing carries). Coverage (the share of questions
-  where it is defined) is reported next to the rate.
+  exactly two equivalences: the ratio/percent equivalence of `textnum.numbers_equal` (0.12 vs
+  12) at scale 1, and a one-way unit-scale equivalence, `value == gold × {1e3, 1e6, 1e9}`,
+  because FinanceBench gold answers quote table figures such as `$1577.00` without the "in
+  millions" header the filing carries while `value` is in base units by contract. The reverse
+  (`value × scale == gold`, i.e. the model answered $1.577) is never accepted and the percent
+  equivalence never composes with a scale, so nothing orders of magnitude off can pass a metric
+  that overrides the judge; `numeric_match_scale` reports the scale that matched (the rule
+  judge's rationale names it). Coverage (the share of questions where it is defined) is
+  reported next to the rate.
 - **Judge accuracy**: tri-state label `correct` / `incorrect` / `abstain` from the LLM judge
   (below). The **effective label** of a record is: abstained → `abstain`; `numeric_match`
   defined → it overrides the judge; otherwise the judge's label; otherwise unscored (a rule-judged

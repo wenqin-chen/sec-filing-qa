@@ -12,10 +12,14 @@ in ``tests/eval/test_metrics.py``. Definitions (SPEC section 7):
 * ``gold_page_mrr`` -- reciprocal of the rank (1-based) of the first gold page; 0 when absent.
 * ``numeric_match`` -- strict: the model's structured ``value`` against the *single* number in
   the gold answer; ``None`` (undefined) when the gold has zero or several numbers or the model
-  gave no value. Tolerance is 1% relative; the ratio/percent equivalence of
-  :func:`secqa.core.textnum.numbers_equal` and a unit-scale equivalence (x1e3 / x1e6 / x1e9,
-  because FinanceBench gold answers state table figures such as ``$1577.00`` without the
-  "in millions" the filing carries) are accepted and documented.
+  gave no value. Tolerance is 1% relative. Two documented equivalences and nothing else: the
+  ratio/percent equivalence of :func:`secqa.core.textnum.numbers_equal` (``0.12`` vs ``12``) at
+  scale 1, and a one-way unit-scale equivalence -- ``value == gold * {1e3, 1e6, 1e9}`` --
+  because FinanceBench gold answers quote table figures such as ``$1577.00`` without the
+  "in millions" header the filing carries while ``value`` is in base units by contract. The
+  reverse direction (``value * scale == gold``) is a wrong answer and is never accepted, and the
+  percent equivalence is never composed with a scale; :func:`numeric_match_scale` reports which
+  scale matched so every scaled acceptance is auditable.
 * Judge accuracy, abstention and hallucination follow the tri-state label; when
   ``numeric_match`` is defined it overrides the judge and every override is listed in
   ``RunSummary.judge_numeric_disagreements``.
@@ -48,7 +52,8 @@ DEFAULT_N_BOOT = 2000
 DEFAULT_SEED = 0
 CI_LEVEL = 0.95
 SCALE_FACTORS: tuple[float, ...] = (1.0, 1e3, 1e6, 1e9)
-"""Unit scales a structured value may differ from the gold by (units up to billions)."""
+"""Unit scales a gold answer may be *understated* by (a table figure quoted without its "in
+thousands / millions / billions" header). Applied one way only: ``value == gold * scale``."""
 
 PREDICTIONS_NAME = "predictions.jsonl"
 SUMMARY_NAME = "summary.json"
@@ -185,6 +190,41 @@ def gold_number(gold_answer: str) -> float | None:
     return numbers[0]
 
 
+def _numeric_compare(
+    pred_value: float | None, gold_answer: str, rel_tol: float, scales: Sequence[float]
+) -> tuple[bool | None, float | None]:
+    """``(match, scale)``: the verdict and the scale it was reached at (``None`` when undefined
+    or no match). Shared by :func:`numeric_match` and :func:`numeric_match_scale`."""
+    if rel_tol <= 0:
+        raise ValueError(f"rel_tol must be positive, got {rel_tol}")
+    for scale in scales:
+        if scale <= 0:
+            raise ValueError(f"scales must be positive, got {scale}")
+    if pred_value is None:
+        return None, None
+    try:
+        predicted = float(pred_value)
+    except (TypeError, ValueError):
+        return None, None
+    if math.isnan(predicted) or math.isinf(predicted):
+        return None, None
+    gold = gold_number(gold_answer)
+    if gold is None:
+        return None, None
+    for scale in scales:
+        if scale == 1.0:
+            # Plain match: 1% relative tolerance plus the ratio/percent equivalence, because
+            # gold answers write percentages both ways (12% and 0.12).
+            if numbers_equal(predicted, gold, rel_tol=rel_tol):
+                return True, 1.0
+        elif math.isclose(predicted, gold * scale, rel_tol=rel_tol):
+            # Scaled match: the gold understates a table figure by exactly this factor. No
+            # percent equivalence here and never the reverse direction, otherwise values up to
+            # nine orders of magnitude apart would pass a metric that overrides the judge.
+            return True, scale
+    return False, None
+
+
 def numeric_match(
     pred_value: float | None,
     gold_answer: str,
@@ -194,31 +234,32 @@ def numeric_match(
     """Strict structured-value match against the single number of the gold answer.
 
     Returns ``None`` (undefined) when the model gave no value, or the gold answer does not
-    contain exactly one number; otherwise ``True`` when the two agree within ``rel_tol`` under
-    :func:`secqa.core.textnum.numbers_equal` (ratio/percent equivalence included) at any of the
-    unit ``scales`` (units, thousands, millions, billions) in either direction.
+    contain exactly one number. Otherwise ``True`` when, for some scale in ``scales`` (checked in
+    order), the value agrees with ``gold * scale`` within ``rel_tol``: at scale ``1.0`` through
+    :func:`secqa.core.textnum.numbers_equal` (ratio/percent equivalence included), at any other
+    scale by plain relative tolerance only. The reverse relation ``value * scale == gold`` is
+    never accepted: ``value`` is in base units by contract, so a model answering ``$1.577`` to a
+    gold of ``$1577.00`` (millions) is wrong. Use :func:`numeric_match_scale` to learn which
+    scale matched.
     """
-    if rel_tol <= 0:
-        raise ValueError(f"rel_tol must be positive, got {rel_tol}")
-    if pred_value is None:
-        return None
-    try:
-        predicted = float(pred_value)
-    except (TypeError, ValueError):
-        return None
-    if math.isnan(predicted) or math.isinf(predicted):
-        return None
-    gold = gold_number(gold_answer)
-    if gold is None:
-        return None
-    for scale in scales:
-        if scale <= 0:
-            raise ValueError(f"scales must be positive, got {scale}")
-        if numbers_equal(predicted, gold * scale, rel_tol=rel_tol):
-            return True
-        if scale != 1.0 and numbers_equal(predicted * scale, gold, rel_tol=rel_tol):
-            return True
-    return False
+    match, _ = _numeric_compare(pred_value, gold_answer, rel_tol, scales)
+    return match
+
+
+def numeric_match_scale(
+    pred_value: float | None,
+    gold_answer: str,
+    rel_tol: float = 0.01,
+    scales: Sequence[float] = SCALE_FACTORS,
+) -> float | None:
+    """The unit scale at which :func:`numeric_match` accepted the value, else ``None``.
+
+    ``1.0`` is a plain match; ``1e3`` / ``1e6`` / ``1e9`` mean the gold answer understated a
+    table figure by that factor. ``None`` when the match is undefined or ``False``. Meant for
+    audit trails (the rule judge's rationale) so scaled acceptances are visible, not silent.
+    """
+    _, scale = _numeric_compare(pred_value, gold_answer, rel_tol, scales)
+    return scale
 
 
 # ---------------------------------------------------------------------------------------------
@@ -556,6 +597,7 @@ __all__ = [
     "gold_page_mrr",
     "judge_numeric_disagree",
     "numeric_match",
+    "numeric_match_scale",
     "page_recall_at_k",
     "read_records",
     "summarize",

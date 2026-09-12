@@ -183,6 +183,20 @@ def test_rule_judge_decides_only_by_rule() -> None:
     assert judge.faithfulness(_answer()) is None
 
 
+def test_rule_judge_rationale_names_a_scaled_match() -> None:
+    """A gold table figure quoted without its 'in millions' header matches the base-unit value
+    one way only, and the rationale says so; the reverse direction is scored incorrect."""
+    judge = RuleJudge()
+    q = _question().model_copy(update={"answer": "$1577.00"})
+    scaled = judge.correctness(q, _answer(value=1_577_000_000.0))
+    assert scaled is not None and scaled.label == "correct"
+    assert "x1,000,000" in scaled.rationale
+    plain = judge.correctness(_question(), _answer(value=1_577_000_000.0))
+    assert plain is not None and plain.label == "correct" and "understated" not in plain.rationale
+    reverse = judge.correctness(q, _answer(value=1.577))
+    assert reverse is not None and reverse.label == "incorrect"
+
+
 def test_make_judge_and_llm_judge_skips_uncitable_answers() -> None:
     assert isinstance(make_judge("rule"), RuleJudge)
     with pytest.raises(ConfigError, match="fabricate"):

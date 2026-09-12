@@ -48,7 +48,7 @@ from secqa.core.errors import ConfigError
 from secqa.core.ids import sha256_hex
 from secqa.core.logging import get_logger
 from secqa.core.settings import provider_vendor
-from secqa.eval.metrics import effective_label, numeric_match, read_records
+from secqa.eval.metrics import effective_label, numeric_match, numeric_match_scale, read_records
 from secqa.rag import ABSTAIN_TEXT
 from secqa.rag.prompts import JUDGE_CORRECTNESS_SYSTEM, JUDGE_FAITHFULNESS_SYSTEM
 from secqa.rag.prompts import PROMPTS_DIR as _RAG_PROMPTS_DIR
@@ -341,7 +341,12 @@ class RuleJudge:
             if match is None:
                 return None
             label = "correct" if match else "incorrect"
-            outcome = "match" if match else "mismatch"
+            scale = numeric_match_scale(pred.value, q.answer) if match else None
+            if scale is not None and scale != 1.0:
+                # Auditable: a scaled acceptance names the factor the gold was understated by.
+                outcome = f"match at x{int(scale):,}, gold understated by a unit scale"
+            else:
+                outcome = "match" if match else "mismatch"
             why = f"structured value {pred.value!r} vs gold number ({outcome})"
         return JudgeVerdict(
             label=label,  # type: ignore[arg-type]  # one of LABELS by construction

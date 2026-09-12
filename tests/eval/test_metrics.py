@@ -17,6 +17,7 @@ from secqa.eval.metrics import (
     gold_page_mrr,
     judge_numeric_disagree,
     numeric_match,
+    numeric_match_scale,
     page_recall_at_k,
     summarize,
 )
@@ -30,15 +31,24 @@ from tests.eval.conftest import TOP_DOC, make_record, verified_citation, write_p
     [
         (1_577_000_000.0, "$1,577 million", True),
         (1_577_000_000.0, "$1577.00", True),  # gold in millions without saying so (scale)
-        (1577.0, "$1,577 million", True),  # the other direction
+        (1_577_000.0, "$1577.00", True),  # gold in thousands without saying so
+        (1577.0, "$1,577 million", False),  # reverse direction: the model said $1,577, not $1,577M
+        (1.577, "$1577.00", False),  # value / 1e3 == gold is a wrong answer, not a unit scale
+        (0.01577, "$1577.00", False),  # nor value / 1e3 with the percent equivalence on top
+        (1.577e15, "$1577.00", False),  # beyond the documented scales
         (1_580_000_000.0, "$1,577 million", True),  # within 1%
         (1_600_000_000.0, "$1,577 million", False),  # 1.5% off
         (0.12, "12%", True),
         (12.0, "12%", True),  # ratio/percent equivalence
         (0.12, "12.5%", False),
+        (1.2e7, "12%", False),  # 1.2 million percent is not 12%
+        (1.2e-5, "12%", False),
+        (1200.0, "12%", False),  # 12 * 100 (percent) then * 1e3 (scale) must not chain
+        (3.5, "3.5x", True),
+        (35.0, "3.5x", False),  # x10 is neither a table-header scale nor the percent equivalence
         (-1577.0, "(1,577)", True),
         (1577.0, "(1,577)", False),  # sign matters
-        (245.0, "$245 million", True),
+        (245.0, "$245 million", False),  # value is in base units by contract: 245 is $245
         (245.0, "Operating income was $245 million and net income was $190 million.", None),
         (245.0, "No", None),  # gold has no number
         (None, "$245 million", None),  # model gave no value
@@ -53,6 +63,34 @@ def test_numeric_match_scale_can_be_disabled() -> None:
     assert numeric_match(1_577_000_000.0, "$1577.00", scales=(1.0,)) is False
     with pytest.raises(ValueError):
         numeric_match(1.0, "1", rel_tol=0.0)
+    with pytest.raises(ValueError):
+        numeric_match(1.0, "1", scales=(1.0, 0.0))
+
+
+def test_numeric_match_accepts_only_the_documented_equivalences() -> None:
+    """Regression: the old rule tried every scale in both directions and let the ratio/percent
+    equivalence ride inside each scaled comparison, so every power of ten from 1.577e-3 to
+    1.577e12 matched a gold of $1577.00 -- and overrode the judge. Exactly six values may match:
+    the gold itself, the three one-way table-header scales, and the x100 ratio/percent
+    equivalence of ``numbers_equal`` at scale 1 (never chained with a scale)."""
+    gold = "$1577.00"
+    scaled = {1577.0, 1_577_000.0, 1_577_000_000.0, 1_577_000_000_000.0}
+    percent_at_scale_1 = {15.77, 157_700.0}
+    probes = {1577.0 * 10.0**exp for exp in range(-9, 13)}
+    for value in sorted(probes):
+        expected = value in scaled | percent_at_scale_1
+        assert numeric_match(value, gold) is expected, value
+
+
+def test_numeric_match_scale_reports_the_matched_scale() -> None:
+    assert numeric_match_scale(1_577_000_000.0, "$1577.00") == 1e6
+    assert numeric_match_scale(1_577_000.0, "$1577.00") == 1e3
+    assert numeric_match_scale(1_577_000_000.0, "$1,577 million") == 1.0
+    assert numeric_match_scale(12.0, "12%") == 1.0  # percent equivalence lives at scale 1 only
+    assert numeric_match_scale(1577.0, "$1,577 million") is None  # mismatch
+    assert numeric_match_scale(None, "$1,577 million") is None  # undefined
+    assert numeric_match_scale(1.0, "No") is None  # undefined
+    assert numeric_match_scale(1_577_000_000.0, "$1577.00", scales=(1.0,)) is None
 
 
 # ---- page recall / MRR --------------------------------------------------------------------

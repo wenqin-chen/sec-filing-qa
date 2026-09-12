@@ -120,8 +120,10 @@ that refusing to answer is neither rewarded as correct nor punished as a halluci
 
 **Decision.** One fixed judge for every row: `anthropic:claude-sonnet-5`, effort `low`, JSON
 schema output with labels `correct` / `incorrect` / `abstain`, frozen prompts hashed into every
-record with a `judge_version`. The deterministic `numeric_match` (1% tolerance, unit-scale and
-ratio/percent equivalence) overrides the judge when defined, and every override is listed.
+record with a `judge_version`. The deterministic `numeric_match` (1% tolerance; ratio/percent
+equivalence; a gold table figure understated by ×1e3 / ×1e6 / ×1e9 accepted one way only, never
+the reverse and never combined with the percent equivalence) overrides the judge when defined,
+and every override is listed.
 Judge error is *measured*: a judge-swap re-score (`gpt-5.4-mini`) and a 30-question human
 subset both report Cohen's kappa, and kappa < 0.6 marks accuracy cells provisional.
 

@@ -263,8 +263,9 @@ Full definitions in [`docs/EVAL.md`](docs/EVAL.md); the reasoning in [`docs/deci
   rows within the caps in `configs/*.yaml`. Runs resume; partial rows are shown as partial.
 - **Metrics.** `page_recall@{5,10,20}`, `evidence_overlap_recall@10` (>= 50% character overlap
   with the evidence text, page-offset-robust; disagreement with page recall is reported),
-  `gold_page_mrr`; `numeric_match` (strict, 1% relative tolerance, unit-scale equivalence,
-  undefined when the gold answer has zero or several numbers); judge accuracy (tri-state
+  `gold_page_mrr`; `numeric_match` (strict, 1% relative tolerance, one-way unit-scale
+  equivalence for gold table figures quoted without their "in millions" header, undefined when
+  the gold answer has zero or several numbers); judge accuracy (tri-state
   correct / incorrect / abstain), `abstain_rate`, `hallucination_rate = incorrect / (correct +
   incorrect)`, `faithfulness` (atomic claims judged against cited passages only, gold hidden);
   deterministic `citation_verified_rate` and `grounded_rate`; latency p50/p95 split retrieval vs

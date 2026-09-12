@@ -71,6 +71,16 @@ with real rows for both providers, a verified Cloud Run deployment).
   (`results/<config>/<run_id>/`) commit with a plain `git add`, while `results/*_mock/` (local
   smoke runs) and `results/**/cassettes/` stay ignored.
 
+### Fixed
+
+- **eval**: `numeric_match` was not strict. It tried every unit scale (x1e3 / x1e6 / x1e9) in
+  both directions and let the ratio/percent equivalence ride inside each scaled comparison, so
+  a gold of `$1577.00` accepted 1.577, 15.77, 157700 and 1.577e12 and a gold of `12%` accepted
+  1.2e7 -- and, because a defined `numeric_match` overrides the judge, such answers were scored
+  correct. The scale relation is now one way only (`value == gold * scale`, the gold understating
+  a table figure), the percent equivalence applies at scale 1 only, and `numeric_match_scale`
+  reports the matched scale (the rule judge's rationale names it).
+
 ### Not yet done (tracked, not claimed)
 
 - No FinanceBench row has been run; every cell in `RESULTS.md` is `pending (not run)`.
