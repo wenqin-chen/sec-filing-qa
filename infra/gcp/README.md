@@ -81,8 +81,9 @@ by manual dispatch and pastes the smoke output into the job summary.
 
 ## Sizing and cost notes
 
-- The `full` image is ~1.6 GB (torch CPU + bge-small); cold start is 10-20 s. `--cpu-boost`
-  helps; `--min-instances 1` removes cold starts at roughly the price of one always-on vCPU.
+- The `full` image is ~1.6 GB (torch CPU + bge-small; `uv.lock` pins linux torch to PyTorch's
+  CPU index, see `docs/DEPLOY.md`); cold start is 10-20 s. `--cpu-boost` helps;
+  `--min-instances 1` removes cold starts at roughly the price of one always-on vCPU.
 - `--concurrency 4` because one process holds one DuckDB handle and the agent loop is CPU-bound
   for seconds at a time; scale with instances (`--max-instances 2` caps the bill).
 - The daily budget (`SECQA_DAILY_BUDGET_USD`) is per instance and in-memory (documented

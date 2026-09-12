@@ -7,10 +7,12 @@ import os
 import re
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
 import yaml
+from packaging.markers import Marker
 
 from tests.ops.conftest import FIXTURES, REPO, SCRIPTS
 
@@ -18,6 +20,21 @@ DOCKERFILE = REPO / "Dockerfile"
 DOCKERIGNORE = REPO / ".dockerignore"
 COMPOSE = REPO / "docker-compose.yml"
 ENTRYPOINT = SCRIPTS / "entrypoint.sh"
+PYPROJECT = REPO / "pyproject.toml"
+LOCKFILE = REPO / "uv.lock"
+
+PYTORCH_CPU_INDEX = "https://download.pytorch.org/whl/cpu"
+# What the container is: linux x86_64, the Dockerfile's python:3.11 base.
+CONTAINER_ENV = {
+    "sys_platform": "linux",
+    "platform_system": "Linux",
+    "platform_machine": "x86_64",
+    "os_name": "posix",
+    "python_version": "3.11",
+    "python_full_version": "3.11.13",
+    "implementation_name": "cpython",
+    "platform_python_implementation": "CPython",
+}
 
 SECRET_ENV_NAMES = ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "SECQA_API_KEY", "SEC_USER_AGENT")
 
@@ -200,3 +217,83 @@ class TestEntrypoint:
         assert result.returncode == 0, result.stderr
         assert duckdb_path.is_file()
         assert '"event": "fixture_index_ready"' in result.stderr
+
+
+def _selects_container(package: dict[str, object]) -> bool:
+    """True when a lock entry's ``resolution-markers`` cover the container environment (an entry
+    without markers covers every environment)."""
+    markers = package.get("resolution-markers")
+    if not markers:
+        return True
+    assert isinstance(markers, list)
+    return any(Marker(m).evaluate(CONTAINER_ENV) for m in markers)
+
+
+@pytest.fixture(scope="module")
+def pyproject() -> dict[str, object]:
+    return tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
+
+
+@pytest.fixture(scope="module")
+def lock_packages() -> list[dict[str, object]]:
+    lock = tomllib.loads(LOCKFILE.read_text(encoding="utf-8"))
+    packages = lock["package"]
+    assert isinstance(packages, list) and packages
+    return packages
+
+
+class TestTorchCpuBuild:
+    """The ``full`` target (``--extra local``) must install the CPU build of torch. PyPI's linux
+    torch wheel depends on the CUDA stack (cudnn, cublas, nccl, triton, ...: ~2.9 GB of wheels the
+    1-vCPU container can never use), so linux torch is resolved from PyTorch's CPU index."""
+
+    def test_pyproject_points_linux_torch_at_the_cpu_index(self, pyproject: dict) -> None:
+        uv = pyproject["tool"]["uv"]
+        indexes = {index["name"]: index for index in uv["index"]}
+        assert indexes["pytorch-cpu"]["url"] == PYTORCH_CPU_INDEX
+        assert indexes["pytorch-cpu"]["explicit"] is True, "every other package stays on PyPI"
+        sources = uv["sources"]["torch"]
+        assert any(
+            source["index"] == "pytorch-cpu" and source["marker"] == "sys_platform == 'linux'"
+            for source in sources
+        ), sources
+        # uv applies a source only to packages the project declares itself, so a transitive
+        # torch (via sentence-transformers) would silently keep resolving from PyPI.
+        local_extra = pyproject["project"]["optional-dependencies"]["local"]
+        assert any(req.split(">")[0].split("=")[0].strip() == "torch" for req in local_extra), (
+            local_extra
+        )
+
+    def test_lock_resolves_container_torch_from_the_cpu_index(self, lock_packages: list) -> None:
+        torch_entries = [p for p in lock_packages if p["name"] == "torch"]
+        assert torch_entries, "torch missing from uv.lock (the local extra needs it)"
+        selected = [p for p in torch_entries if _selects_container(p)]
+        assert len(selected) == 1, [(p["version"], p["source"]) for p in selected]
+        (torch,) = selected
+        assert torch["source"] == {"registry": PYTORCH_CPU_INDEX}, torch["source"]
+        assert str(torch["version"]).endswith("+cpu"), torch["version"]
+        wheels = [w["url"] for w in torch["wheels"]]
+        assert any("cp311" in url and "manylinux" in url and "x86_64" in url for url in wheels)
+        assert not any(
+            dep["name"].startswith(("nvidia-", "cuda-")) or dep["name"] == "triton"
+            for dep in torch["dependencies"]
+        ), torch["dependencies"]
+
+    def test_lock_contains_no_cuda_packages(self, lock_packages: list) -> None:
+        """Stronger than the torch check: no extra, on any platform, can pull the CUDA stack."""
+        names = {p["name"] for p in lock_packages}
+        offenders = sorted(n for n in names if n.startswith(("nvidia-", "cuda-")) or n == "triton")
+        assert not offenders, offenders
+
+    def test_lock_local_extra_uses_the_cpu_torch_on_linux(self, lock_packages: list) -> None:
+        (secqa,) = [p for p in lock_packages if p["name"] == "secqa"]
+        local = secqa["optional-dependencies"]["local"]
+        # The extra lists one torch per fork (PyPI for macOS/Windows, CPU index for linux);
+        # exactly one of them applies to the container.
+        torch_deps = [
+            d
+            for d in local
+            if d["name"] == "torch" and Marker(d.get("marker", "")).evaluate(CONTAINER_ENV)
+        ]
+        assert len(torch_deps) == 1, [d for d in local if d["name"] == "torch"]
+        assert torch_deps[0]["source"] == {"registry": PYTORCH_CPU_INDEX}, torch_deps[0]

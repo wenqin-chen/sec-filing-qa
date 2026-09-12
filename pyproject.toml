@@ -45,7 +45,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-local = ["sentence-transformers>=3.0"]
+# torch is listed so the `[tool.uv.sources]` entry below applies (uv honours sources only for
+# packages the project declares itself); the minimum is the one sentence-transformers needs.
+local = ["sentence-transformers>=3.0", "torch>=1.11"]
 openai = ["openai>=1.40"]
 anthropic = ["anthropic>=0.40"]
 api-embeddings = ["openai>=1.40"]
@@ -67,6 +69,18 @@ secqa = "secqa.cli:app"
 [project.urls]
 Homepage = "https://github.com/wenqinchen/sec-filing-qa"
 Issues = "https://github.com/wenqinchen/sec-filing-qa/issues"
+
+# torch is only reached through the `local` extra (sentence-transformers) and only ever runs on
+# CPU here (bge-small in a 1-vCPU container). PyPI's linux torch wheel drags in the CUDA 13 stack
+# (~2.9 GB of nvidia-* wheels), so linux resolves torch from PyTorch's CPU-only index instead.
+# `explicit = true` keeps every other package on PyPI. macOS/Windows PyPI wheels are CPU already.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
 
 [build-system]
 requires = ["hatchling>=1.25"]

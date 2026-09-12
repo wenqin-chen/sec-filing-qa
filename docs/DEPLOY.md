@@ -16,6 +16,14 @@ changes only after a CI smoke step has produced output.
 | `full` (default) | `local`: sentence-transformers + `bge-small-en-v1.5` weights baked in at build time | ~1.6 GB | serving the published index (built with the local embedder); no Hub download at runtime |
 | `slim` | `api-embeddings`: OpenAI embeddings only | ~10x smaller | CI container smoke; deployments that use `openai` embeddings or the fixture index |
 
+`full` installs the **CPU build of torch**: `pyproject.toml` declares PyTorch's
+`https://download.pytorch.org/whl/cpu` index (`explicit = true`, so nothing else moves off PyPI) and
+routes `torch` there on linux via `[tool.uv.sources]`. PyPI's linux torch wheel would otherwise pull
+the CUDA 13 stack (cudnn, cublas, nccl, triton, ...) into the image: the `local` extra's locked
+wheels for linux x86_64 / cp311 total ~0.37 GB with the CPU build versus ~3.0 GB with the CUDA one.
+`tests/ops/test_container.py::TestTorchCpuBuild` fails the suite if the lock ever resolves CUDA
+packages again.
+
 Both targets: `uv sync --frozen --no-dev` from the lockfile in a builder stage, `/opt/venv` copied
 into `python:3.11-slim-bookworm`, non-root user `app`, DuckDB `fts` extension and tiktoken
 `cl100k_base` warmed at build time, `HEALTHCHECK` on `/healthz`, `GIT_SHA` build arg exported as
