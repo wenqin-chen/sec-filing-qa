@@ -39,6 +39,9 @@ def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
     for name in list(os.environ):
         if name.upper().startswith("SECQA_"):
             monkeypatch.delenv(name, raising=False)
+    # A developer's real .env (keys, budget, User-Agent) must never leak into the suite: the
+    # settings loader reads ``.env`` from the working directory, so switch the file off here.
+    monkeypatch.setitem(Settings.model_config, "env_file", None)
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
