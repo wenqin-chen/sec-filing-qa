@@ -142,7 +142,9 @@ def test_request_shape_with_tools_and_history(agent_tools: list[ToolSpec]) -> No
     assert request["parallel_tool_calls"] is False
     # gpt-5.x is a reasoning model: no temperature, effort mapped to reasoning_effort
     assert "temperature" not in request
-    assert request["reasoning_effort"] == "medium"
+    # Tools are offered on this turn, so the adapter sends reasoning_effort="none" (chat.completions
+    # rejects reasoning with function tools since 2026-09; see ADR-012).
+    assert request["reasoning_effort"] == "none"
     assert "response_format" not in request
 
 
@@ -296,3 +298,25 @@ def test_exhausted_deadline_raises_before_any_request_is_sent() -> None:
             provider.complete([Message(role="user", content="q")])
     assert info.value.retryable is True and info.value.provider == "openai"
     assert stub.requests == [], "no tokens are paid for a call that cannot finish"
+
+
+def test_tool_calling_turns_send_reasoning_effort_none() -> None:
+    """chat.completions rejects reasoning_effort together with function tools (400, 2026-09-16)."""
+    tool = ToolSpec(
+        name="echo",
+        description="Echo a word.",
+        input_schema={
+            "type": "object",
+            "properties": {"word": {"type": "string"}},
+            "required": ["word"],
+            "additionalProperties": False,
+        },
+    )
+    messages = [Message(role="user", content="Call echo with ping.")]
+    with_tools = build_openai_request("gpt-5.5", messages, tools=[tool], effort="medium")
+    assert with_tools["reasoning_effort"] == "none"
+    assert "temperature" not in with_tools
+    without_tools = build_openai_request("gpt-5.5", messages, effort="medium")
+    assert without_tools["reasoning_effort"] == "medium"
+    non_reasoning = build_openai_request("gpt-4.1-mini", messages, tools=[tool], effort="medium")
+    assert "reasoning_effort" not in non_reasoning and non_reasoning["temperature"] == 0

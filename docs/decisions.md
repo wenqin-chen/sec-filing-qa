@@ -224,3 +224,21 @@ question behind an id, and the README's error analysis describes cases without q
 **Rejected.** Committing full predictions "for transparency": a licence violation. Keeping
 results out of git entirely: the numbers in `RESULTS.md` would then be untraceable, which
 defeats the project's purpose.
+
+## ADR-009: OpenAI tool-calling turns run with `reasoning_effort="none"` (2026-09-16)
+
+**Context.** The first live test with a real key (model `gpt-5.4-mini-2026-03-17`) returned HTTP
+400 from `/v1/chat/completions`: "Function tools with reasoning_effort are not supported ... To
+use function tools, use /v1/responses or set reasoning_effort to 'none'." Structured JSON output
+with `reasoning_effort` still works on the same endpoint.
+
+**Decision.** Keep the chat-completions adapter for v0.1 and force `reasoning_effort="none"`
+whenever function tools are offered on a turn; `rag` and `closed_book` modes (no tools) keep the
+configured effort. The `params()` record written into every run config states this, so no
+result row can silently claim reasoning on OpenAI agent turns.
+
+**Consequence.** OpenAI `agent_*` rows are not effort-matched to the Anthropic `agent_*` rows
+(Claude keeps adaptive thinking on tool turns). This is stated next to the results table and in
+LIMITATIONS.md. **Follow-up:** migrate the OpenAI adapter to `/v1/responses` (which accepts
+reasoning with tools), re-record the fixtures, and re-run the OpenAI agent rows; the API key then
+also needs `Responses: Request` permission.

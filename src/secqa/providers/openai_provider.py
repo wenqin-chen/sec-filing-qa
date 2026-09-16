@@ -14,7 +14,9 @@ Design notes (SPEC section 5):
 * ``json_schema`` becomes ``response_format={"type": "json_schema", ..., "strict": true}``.
 * ``temperature=0`` is sent only to models that accept it (reasoning models - ``gpt-5*``, ``o*`` -
   reject any value other than the default); what was sent is recorded in :meth:`params`.
-* ``effort`` maps to ``reasoning_effort`` on reasoning models and is dropped otherwise.
+* ``effort`` maps to ``reasoning_effort`` on reasoning models and is dropped otherwise; on
+  tool-calling turns it is forced to ``'none'`` because chat.completions rejects reasoning with
+  function tools (HTTP 400 observed 2026-09-16; Responses-API migration is the recorded follow-up).
 * Tool results: our contract carries all results of one step in ONE ``Message(role='tool')``;
   the wire format needs one ``role: tool`` message per ``tool_call_id``, so the adapter fans out.
 * ``Usage.input_tokens`` = ``prompt_tokens - cached_tokens`` (see ``providers.base``).
@@ -105,7 +107,14 @@ def build_openai_request(
             },
         }
     if is_reasoning_model(model):
-        if effort is not None:
+        if tools:
+            # Observed 2026-09-16 (gpt-5.4-mini-2026-03-17): chat.completions returns HTTP 400
+            # "Function tools with reasoning_effort are not supported ... use /v1/responses or
+            # set reasoning_effort to 'none'". Tool-calling turns therefore run without
+            # reasoning on OpenAI models until the adapter moves to the Responses API
+            # (docs/decisions.md, ADR-009).
+            request["reasoning_effort"] = "none"
+        elif effort is not None:
             request["reasoning_effort"] = effort
     else:
         request["temperature"] = 0
@@ -253,7 +262,12 @@ class OpenAIProvider(BaseProvider):
         reasoning = is_reasoning_model(self.model)
         return {
             "temperature": None if reasoning else 0,
-            "reasoning_effort": "from effort" if reasoning else None,
+            "reasoning_effort": (
+                "from effort; 'none' on tool-calling turns (chat.completions rejects "
+                "reasoning_effort with function tools)"
+                if reasoning
+                else None
+            ),
             "strict_tools": True,
             "parallel_tool_calls": False,
             "response_format": "json_schema (strict) when json_schema is given",

@@ -133,3 +133,9 @@ limits of what *is* built.
   (public domain) and our prompts. Cassettes are attached to the GitHub Release, with attribution,
   under that licence, for non-commercial evaluation reproducibility only; the git repository
   itself never contains dataset text. A rescore needs them downloaded first.
+
+- **OpenAI agent rows run without reasoning on tool-calling turns.** `/v1/chat/completions` rejects
+  `reasoning_effort` together with function tools (HTTP 400, observed 2026-09-16), so the adapter
+  sends `reasoning_effort="none"` on those turns. Anthropic agent rows keep adaptive thinking, so the
+  two vendors' `agent_*` rows are not effort-matched; migrating the OpenAI adapter to `/v1/responses`
+  is the recorded follow-up (docs/decisions.md ADR-009).
