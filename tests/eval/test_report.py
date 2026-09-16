@@ -55,7 +55,12 @@ def test_golden_all_pending(tmp_path: Path) -> None:
     # ... and a row without a judge-swap / human-agreement file says so, per row
     agreement = rendered.split("## Judge agreement")[1].split("## Breakdown")[0]
     pending_rows = [line for line in agreement.splitlines() if line.startswith("| `")]
-    assert len(pending_rows) == 9  # every answering config, never omitted
+    answering_configs = {
+        path.stem
+        for path in CONFIGS_DIR.glob("*.yaml")
+        if not path.stem.endswith("_mock") and not path.stem.startswith("retrieval_")
+    }
+    assert len(pending_rows) == len(answering_configs)  # every answering config, never omitted
     for line in pending_rows:
         assert line.endswith(
             "| pending | pending | pending | pending | pending | pending | pending |"

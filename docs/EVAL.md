@@ -211,6 +211,18 @@ reason (`requires OPENAI_API_KEY and the FinanceBench index`, ...), never an omi
   not complete, the fallback wording is "RAG + agent system with offline evaluation harness and
   published retrieval results", never "benchmarked OpenAI and Claude".
 
+### What "grounded" measures (and why RAG rows score low on it)
+
+`grounded` is true only when every numeric token in the answer appears verbatim in a cited chunk
+or fact. A derived figure, for example "fixed asset turnover 24.26x" computed from two cited line
+items, is therefore *not* grounded even when both inputs are cited and the arithmetic is right; the
+first live smoke run (2026-09-16, ten 3M questions) scored `grounded` 0/4 on non-abstained Claude
+answers for exactly this reason while `citation_verified_rate` was 1.0. Read the two columns
+together: verified citations say the quoted evidence is real; grounded says no number was
+introduced that the evidence does not contain. Agent rows can ground derived numbers through
+calculator tool calls; RAG rows cannot, by construction. Abstentions count as grounded (nothing
+was asserted).
+
 ## Findings so far (retrieval-only rows, 2026-09-12)
 
 Six key-free rows are complete (FinanceBench open set, 150 questions, bge-small-en-v1.5 index,
