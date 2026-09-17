@@ -270,16 +270,17 @@ def write_records(path: Path, records: list[EvalRecord]) -> None:
 
 
 def _count_scored(path: Path) -> int:
-    """Records whose answer did not fail (``error`` unset); failed rows are retried on resume."""
+    """Records that were answered AND judged (no ``error``/``judge_error``); others are retried."""
     n = 0
     with Path(path).open("r", encoding="utf-8") as fh:
         for line in fh:
             if not line.strip():
                 continue
             try:
-                n += json.loads(line).get("error") is None
+                rec = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            n += rec.get("error") is None and rec.get("judge_error") is None
     return n
 
 
@@ -701,11 +702,15 @@ def run_eval(
     pred_path = run_dir / PREDICTIONS_NAME
     done: set[str] = set()
     if pred_path.is_file():
-        kept = [rec for rec in read_records(pred_path) if rec.error is None]
+        kept = [
+            rec for rec in read_records(pred_path) if rec.error is None and rec.judge_error is None
+        ]
         n_failed = _count_lines(pred_path) - len(kept)
         if n_failed:
-            # A provider error (network drop, timeout, 5xx) leaves an unscored record; resuming
-            # retries those questions and their records are replaced, never double-counted.
+            # A provider error (network drop, timeout, 5xx) on the answer OR on the judge leaves a
+            # record that is unscored or unjudged; resuming retries those questions (the answer
+            # replays from its cassette when one exists) and replaces the records, never
+            # double-counting.
             write_records(pred_path, kept)
             log.info("eval_retrying_failed", run_dir=str(run_dir), n_failed=n_failed)
         done = {rec.financebench_id for rec in kept}
