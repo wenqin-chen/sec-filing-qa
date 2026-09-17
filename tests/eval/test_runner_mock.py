@@ -211,6 +211,11 @@ def test_resume_retries_rows_whose_answer_failed(
         }
     )
     lines[1] = json.dumps(rec, ensure_ascii=False)
+    # ... and the 4th record was answered but its judge call died (verdict None, unjudged).
+    rec4 = json.loads(lines[3])
+    rec4.update({"judge_error": "judge faithfulness: [anthropic] APITimeoutError: timed out."})
+    lines[3] = json.dumps(rec4, ensure_ascii=False)
+    unjudged_id = rec4["financebench_id"]
     pred_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     # The run now counts as incomplete even though every id has a line ...
     assert find_resumable_run(out, cfg, 6) == run_dir
@@ -218,9 +223,9 @@ def test_resume_retries_rows_whose_answer_failed(
     resumed = run_eval(cfg, questions, store, out_dir=out, prices=prices, resume=True)
     assert resumed == run_dir
     after = read_records(pred_path)
-    assert len(after) == 6 and all(r.error is None for r in after)
+    assert len(after) == 6 and all(r.error is None and r.judge_error is None for r in after)
     assert {r.financebench_id for r in after} == {q.id for q in questions}
-    assert after[-1].financebench_id == failed_id  # retried row re-appended at the end
+    assert {r.financebench_id for r in after[-2:]} == {failed_id, unjudged_id}  # both retried
     assert find_resumable_run(out, cfg, 6) is None  # complete again
 
 
