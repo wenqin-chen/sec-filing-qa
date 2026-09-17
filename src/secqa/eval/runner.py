@@ -245,7 +245,7 @@ def find_resumable_run(out_dir: Path, cfg: EvalConfig, n_questions: int) -> Path
         if not isinstance(raw, dict) or raw.get("config") != wanted:
             continue
         pred_path = config_path.parent / PREDICTIONS_NAME
-        n_done = _count_lines(pred_path) if pred_path.is_file() else 0
+        n_done = _count_scored(pred_path) if pred_path.is_file() else 0
         if n_done >= n_questions:
             continue
         candidates.append((str(raw.get("started_at") or ""), config_path.parent))
@@ -258,6 +258,29 @@ def find_resumable_run(out_dir: Path, cfg: EvalConfig, n_questions: int) -> Path
 def _count_lines(path: Path) -> int:
     with Path(path).open("r", encoding="utf-8") as fh:
         return sum(1 for line in fh if line.strip())
+
+
+def write_records(path: Path, records: list[EvalRecord]) -> None:
+    """Rewrite ``predictions.jsonl`` atomically with exactly ``records`` (drops failed rows)."""
+    tmp = Path(path).with_suffix(".jsonl.tmp")
+    with tmp.open("w", encoding="utf-8") as fh:
+        for rec in records:
+            fh.write(rec.model_dump_json() + "\n")
+    tmp.replace(path)
+
+
+def _count_scored(path: Path) -> int:
+    """Records whose answer did not fail (``error`` unset); failed rows are retried on resume."""
+    n = 0
+    with Path(path).open("r", encoding="utf-8") as fh:
+        for line in fh:
+            if not line.strip():
+                continue
+            try:
+                n += json.loads(line).get("error") is None
+            except json.JSONDecodeError:
+                continue
+    return n
 
 
 def index_sha_of(store: DuckDBStore) -> str:
@@ -678,7 +701,14 @@ def run_eval(
     pred_path = run_dir / PREDICTIONS_NAME
     done: set[str] = set()
     if pred_path.is_file():
-        done = {rec.financebench_id for rec in read_records(pred_path)}
+        kept = [rec for rec in read_records(pred_path) if rec.error is None]
+        n_failed = _count_lines(pred_path) - len(kept)
+        if n_failed:
+            # A provider error (network drop, timeout, 5xx) leaves an unscored record; resuming
+            # retries those questions and their records are replaced, never double-counted.
+            write_records(pred_path, kept)
+            log.info("eval_retrying_failed", run_dir=str(run_dir), n_failed=n_failed)
+        done = {rec.financebench_id for rec in kept}
     started_at = datetime.now(UTC)
     if not (run_dir / CONFIG_NAME).is_file():
         _write_config(run_dir, cfg, harness, selected, len(questions), run_cassettes, started_at)

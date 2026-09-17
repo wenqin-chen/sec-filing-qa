@@ -187,6 +187,43 @@ def test_resume_skips_done_ids_and_reuses_run_dir(
     assert third != first and len(read_records(third / "predictions.jsonl")) == 6
 
 
+def test_resume_retries_rows_whose_answer_failed(
+    store: DuckDBStore,
+    questions: list[FBQuestion],
+    prices: PriceTable,
+    tmp_path: Path,
+) -> None:
+    """A provider error (network drop, timeout) leaves an unscored record; resume retries it."""
+    out = tmp_path / "results"
+    cfg = rag_cfg()
+    run_dir = run_eval(cfg, questions, store, out_dir=out, prices=prices, run_id="fixed_run")
+    pred_path = run_dir / "predictions.jsonl"
+    records = read_records(pred_path)
+    assert len(records) == 6 and all(r.error is None for r in records)
+    # Simulate the outage: the 2nd record failed at answer time (no answer, not completed).
+    failed_id = records[1].financebench_id
+    lines = pred_path.read_text(encoding="utf-8").splitlines()
+    rec = json.loads(lines[1])
+    rec.update(
+        {
+            "error": "provider: [openai] APIConnectionError: Connection error.",
+            "terminated_by": "error",
+        }
+    )
+    lines[1] = json.dumps(rec, ensure_ascii=False)
+    pred_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # The run now counts as incomplete even though every id has a line ...
+    assert find_resumable_run(out, cfg, 6) == run_dir
+    # ... and a plain resume retries exactly the failed question, replacing its record.
+    resumed = run_eval(cfg, questions, store, out_dir=out, prices=prices, resume=True)
+    assert resumed == run_dir
+    after = read_records(pred_path)
+    assert len(after) == 6 and all(r.error is None for r in after)
+    assert {r.financebench_id for r in after} == {q.id for q in questions}
+    assert after[-1].financebench_id == failed_id  # retried row re-appended at the end
+    assert find_resumable_run(out, cfg, 6) is None  # complete again
+
+
 def test_agent_mock_end_to_end(
     store: DuckDBStore,
     questions: list[FBQuestion],
