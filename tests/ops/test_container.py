@@ -68,6 +68,9 @@ class TestDockerfile:
         assert {"deps", "build-slim", "build-full", "runtime", "slim", "full"} <= set(stages)
         assert stages["deps"] == "${UV_IMAGE}"
         assert "ghcr.io/astral-sh/uv:python3.11-bookworm-slim" in dockerfile
+        # The runtime PATH omits /usr/sbin, so account tools must be called by absolute path.
+        assert "/usr/sbin/groupadd" in dockerfile and "/usr/sbin/useradd" in dockerfile
+        assert "RUN groupadd" not in dockerfile
         assert stages["runtime"] == "${PYTHON_IMAGE}"
         assert "python:3.11-slim" in dockerfile
         assert stages["slim"] == "runtime" and stages["full"] == "runtime"

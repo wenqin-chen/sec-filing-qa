@@ -78,8 +78,10 @@ ENV PYTHONUNBUFFERED=1 \
     SECQA_DUCKDB_PATH=/data/index.duckdb \
     SECQA_LOG_JSON=true \
     SECQA_GIT_SHA=${GIT_SHA}
-RUN groupadd --system --gid ${APP_UID} app \
-    && useradd --system --uid ${APP_UID} --gid app --home-dir /home/app --create-home --shell /usr/sbin/nologin app \
+# PATH above deliberately omits /usr/sbin, so call the account tools by absolute path (the first
+# CI build failed with exit 127: 'groupadd: not found').
+RUN /usr/sbin/groupadd --system --gid ${APP_UID} app \
+    && /usr/sbin/useradd --system --uid ${APP_UID} --gid app --home-dir /home/app --create-home --shell /usr/sbin/nologin app \
     && mkdir -p /app /data /opt/caches \
     && chown -R app:app /app /data /home/app
 WORKDIR /app
