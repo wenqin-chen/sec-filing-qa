@@ -12,7 +12,7 @@
 # Run:    docker run --rm -p 8080:8080 sec-filing-qa:full     # zero config: fixture index, provider=mock
 # Secrets are never baked in; pass OPENAI_API_KEY / ANTHROPIC_API_KEY / SECQA_API_KEY at run time.
 
-ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.11-python3.11-bookworm-slim
+ARG UV_IMAGE=ghcr.io/astral-sh/uv:python3.11-bookworm-slim
 ARG PYTHON_IMAGE=python:3.11-slim-bookworm
 
 # ---------------------------------------------------------------------------------------------
