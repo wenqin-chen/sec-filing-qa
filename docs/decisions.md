@@ -242,3 +242,21 @@ result row can silently claim reasoning on OpenAI agent turns.
 LIMITATIONS.md. **Follow-up:** migrate the OpenAI adapter to `/v1/responses` (which accepts
 reasoning with tools), re-record the fixtures, and re-run the OpenAI agent rows; the API key then
 also needs `Responses: Request` permission.
+
+## ADR-010: Rank by rounded scores, then chunk_id (2026-09-17)
+
+**Context.** The first CI run on GitHub's Linux runner failed three retrieval tests that pass on
+macOS: with `k=2` and `k=4` the first BM25 hit differed. `scripts/check_ranking_determinism.py`
+showed why: three fixture chunks tie at BM25 3.5956, and DuckDB's parallel aggregation inside the
+FTS macro gives "equal" scores last-bit floating-point differences that vary between queries, so
+`ORDER BY score DESC, chunk_id` broke the tie differently each time.
+
+**Decision.** All three rankers (`bm25`, `dense`, the Python BM25 fallback) order by
+`round(score, 6)` before the `chunk_id` tie-break (`SCORE_DECIMALS`). Six decimals are far below
+any meaningful score difference and above the noise. The determinism script runs in CI as a gate
+and publishes the rankings as annotations.
+
+**Consequence.** Results are reproducible across machines and thread counts, which the harness
+promises (`secqa rescore`). The committed v0.1 rows were produced before this change on a single
+machine; their retrieval order was stable there, so their numbers stand, and any re-run will now
+match them exactly.
