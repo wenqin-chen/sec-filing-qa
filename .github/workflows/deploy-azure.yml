@@ -113,7 +113,7 @@ jobs:
 
       - name: Deploy Bicep (create or update the container app)
         id: deploy
-        uses: azure/cli@v2
+        uses: azure/cli@v3
         with:
           azcliversion: latest
           inlineScript: |
