@@ -1,0 +1,112 @@
+{
+  "by_question_type": {
+    "domain-relevant": {
+      "abstain_rate": 0.24,
+      "accuracy": 0.56,
+      "faithfulness": null,
+      "hallucination_rate": 0.2631578947368421,
+      "n": 50.0,
+      "numeric_match_rate": 0.3333333333333333,
+      "page_recall_10": null
+    },
+    "metrics-generated": {
+      "abstain_rate": 0.5,
+      "accuracy": 0.44,
+      "faithfulness": null,
+      "hallucination_rate": 0.12,
+      "n": 50.0,
+      "numeric_match_rate": 0.88,
+      "page_recall_10": null
+    },
+    "novel-generated": {
+      "abstain_rate": 0.44,
+      "accuracy": 0.38,
+      "faithfulness": null,
+      "hallucination_rate": 0.32142857142857145,
+      "n": 50.0,
+      "numeric_match_rate": 0.5,
+      "page_recall_10": null
+    }
+  },
+  "cassettes": "cassettes/56c63b8_20260917-2332",
+  "ci95": {
+    "abstain_rate": [
+      0.31333333333333335,
+      0.47333333333333333
+    ],
+    "accuracy": [
+      0.38,
+      0.5466666666666666
+    ],
+    "grounded_rate": [
+      0.31868131868131866,
+      0.5164835164835165
+    ],
+    "hallucination_rate": [
+      0.16456043956044003,
+      0.32967032967032966
+    ],
+    "numeric_match_rate": [
+      0.625,
+      0.90625
+    ]
+  },
+  "config_name": "closed_book_gpt",
+  "cost_per_q_usd": 0.023469,
+  "cost_total_usd": 3.52041,
+  "embedder": "local",
+  "failures": {
+    "none": 128,
+    "reasoning_error": 22
+  },
+  "finished_at": "2026-09-18T00:00:25.869836Z",
+  "git_sha": "56c63b806642830720159e7537546ce4631d75bc",
+  "index_sha": "fb3d26842afbe197cd094e2c92d31b287e2931230a57939e2fe8ae53c466bc8f",
+  "judge_cost_usd": 0.38621,
+  "judge_model": "anthropic:claude-sonnet-5",
+  "judge_numeric_disagreements": [
+    "financebench_id_00222"
+  ],
+  "judge_version": "v2",
+  "latency_p50_ms": 8672.135020504356,
+  "latency_p95_ms": 14056.752552055696,
+  "metrics": {
+    "abstain_rate": 0.3933333333333333,
+    "accuracy": 0.46,
+    "citation_verified_rate": null,
+    "error_rate": 0.0,
+    "faith_coverage": 0.0,
+    "faithfulness": null,
+    "gold_page_mrr": null,
+    "grounded_rate": 0.4175824175824176,
+    "hallucination_rate": 0.24175824175824176,
+    "judge_error_rate": 0.0,
+    "llm_ms_p50": 8671.795333495538,
+    "n_scored": 150.0,
+    "numeric_coverage": 0.21333333333333335,
+    "numeric_match_rate": 0.78125,
+    "overlap_recall_10": null,
+    "page_recall_10": null,
+    "page_recall_20": null,
+    "page_recall_5": null,
+    "retrieval_ms_p50": 0.0,
+    "steps_mean": 1.0,
+    "tool_calls_mean": 0.0
+  },
+  "model": "gpt-5.5",
+  "models_yaml_as_of": "2026-09-11",
+  "n": 150,
+  "n_completed": 150,
+  "n_dataset": 150,
+  "prompt_hashes": {
+    "agent_system.md": "8f098e1b6f10e4be347da050fdc87de8130bd4a2c860daea4298b8a24f4b60d5",
+    "closed_book_system.md": "4664b0560eff2f51acf2c4c477bfa85910b71de905e4a8cb7280b826136ca14c",
+    "judge_correctness.md": "3c77552d84f809ad29dc206e2b14dd124324b355441969994774e71c35981fdb",
+    "judge_faithfulness.md": "064f7cb4f997526799405f9c8683f3a6f7b9543f00b72218efc1c232eaead9df",
+    "oracle_system.md": "4594c4a8e156e3c1116b0c87945753dcb849aca497f72da6e10bde214c4e7fbf",
+    "rag_system.md": "5a8c3db1a50b0b0863ba9637a16c9f7c167119ec9476518da2c5e6ef64182d00"
+  },
+  "provider": "openai",
+  "run_id": "56c63b8_20260917-2332",
+  "started_at": "2026-09-17T23:33:00.170287Z"
+}

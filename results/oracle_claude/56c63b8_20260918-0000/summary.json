@@ -1,0 +1,140 @@
+{
+  "by_question_type": {
+    "domain-relevant": {
+      "abstain_rate": 0.0,
+      "accuracy": 0.76,
+      "faithfulness": 0.8829053599461764,
+      "hallucination_rate": 0.24,
+      "n": 50.0,
+      "numeric_match_rate": 0.5,
+      "page_recall_10": 1.0
+    },
+    "metrics-generated": {
+      "abstain_rate": 0.0,
+      "accuracy": 0.96,
+      "faithfulness": 1.0,
+      "hallucination_rate": 0.04,
+      "n": 50.0,
+      "numeric_match_rate": 0.96,
+      "page_recall_10": 1.0
+    },
+    "novel-generated": {
+      "abstain_rate": 0.0,
+      "accuracy": 0.8,
+      "faithfulness": 0.9398095238095238,
+      "hallucination_rate": 0.2,
+      "n": 50.0,
+      "numeric_match_rate": 0.5882352941176471,
+      "page_recall_10": 1.0
+    }
+  },
+  "cassettes": "cassettes/56c63b8_20260918-0000",
+  "ci95": {
+    "abstain_rate": [
+      0.0,
+      0.0
+    ],
+    "accuracy": [
+      0.78,
+      0.9
+    ],
+    "citation_verified_rate": [
+      0.9812080536912751,
+      1.0
+    ],
+    "faithfulness": [
+      0.916807686161713,
+      0.9636034183936868
+    ],
+    "grounded_rate": [
+      0.14666666666666667,
+      0.28
+    ],
+    "hallucination_rate": [
+      0.1,
+      0.22
+    ],
+    "numeric_match_rate": [
+      0.7160493827160493,
+      0.8888888888888888
+    ],
+    "overlap_recall_10": [
+      0.6266666666666667,
+      0.7733333333333333
+    ],
+    "page_recall_10": [
+      1.0,
+      1.0
+    ]
+  },
+  "config_name": "oracle_claude",
+  "cost_per_q_usd": 0.022067,
+  "cost_total_usd": 3.310125,
+  "embedder": "local",
+  "failures": {
+    "calculation_error": 2,
+    "none": 126,
+    "reasoning_error": 1,
+    "unverified_citation": 21
+  },
+  "finished_at": "2026-09-18T00:24:29.804535Z",
+  "git_sha": "56c63b806642830720159e7537546ce4631d75bc",
+  "index_sha": "fb3d26842afbe197cd094e2c92d31b287e2931230a57939e2fe8ae53c466bc8f",
+  "judge_cost_usd": 1.134742,
+  "judge_model": "anthropic:claude-sonnet-5",
+  "judge_numeric_disagreements": [
+    "financebench_id_00382",
+    "financebench_id_00407",
+    "financebench_id_00566",
+    "financebench_id_00684",
+    "financebench_id_00685",
+    "financebench_id_01198",
+    "financebench_id_01279",
+    "financebench_id_01865",
+    "financebench_id_01912",
+    "financebench_id_01936",
+    "financebench_id_05718"
+  ],
+  "judge_version": "v2",
+  "latency_p50_ms": 4794.426020998799,
+  "latency_p95_ms": 8820.525053644084,
+  "metrics": {
+    "abstain_rate": 0.0,
+    "accuracy": 0.84,
+    "citation_verified_rate": 0.9917225950782996,
+    "error_rate": 0.0,
+    "faith_coverage": 0.9933333333333333,
+    "faithfulness": 0.941294220321066,
+    "gold_page_mrr": 1.0,
+    "grounded_rate": 0.21333333333333335,
+    "hallucination_rate": 0.16,
+    "judge_error_rate": 0.0,
+    "llm_ms_p50": 4793.412312501459,
+    "n_scored": 150.0,
+    "numeric_coverage": 0.54,
+    "numeric_match_rate": 0.8024691358024691,
+    "overlap_recall_10": 0.7,
+    "page_recall_10": 1.0,
+    "page_recall_20": 1.0,
+    "page_recall_5": 1.0,
+    "retrieval_ms_p50": 0.0,
+    "steps_mean": 1.0,
+    "tool_calls_mean": 0.0
+  },
+  "model": "claude-opus-5",
+  "models_yaml_as_of": "2026-09-11",
+  "n": 150,
+  "n_completed": 150,
+  "n_dataset": 150,
+  "prompt_hashes": {
+    "agent_system.md": "8f098e1b6f10e4be347da050fdc87de8130bd4a2c860daea4298b8a24f4b60d5",
+    "closed_book_system.md": "4664b0560eff2f51acf2c4c477bfa85910b71de905e4a8cb7280b826136ca14c",
+    "judge_correctness.md": "3c77552d84f809ad29dc206e2b14dd124324b355441969994774e71c35981fdb",
+    "judge_faithfulness.md": "064f7cb4f997526799405f9c8683f3a6f7b9543f00b72218efc1c232eaead9df",
+    "oracle_system.md": "4594c4a8e156e3c1116b0c87945753dcb849aca497f72da6e10bde214c4e7fbf",
+    "rag_system.md": "5a8c3db1a50b0b0863ba9637a16c9f7c167119ec9476518da2c5e6ef64182d00"
+  },
+  "provider": "anthropic",
+  "run_id": "56c63b8_20260918-0000",
+  "started_at": "2026-09-18T00:00:27.383955Z"
+}

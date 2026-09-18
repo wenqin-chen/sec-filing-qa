@@ -1,0 +1,136 @@
+{
+  "by_question_type": {
+    "domain-relevant": {
+      "abstain_rate": 0.0,
+      "accuracy": 0.72,
+      "faithfulness": 0.9263730158730158,
+      "hallucination_rate": 0.28,
+      "n": 50.0,
+      "numeric_match_rate": 0.2222222222222222,
+      "page_recall_10": 0.48
+    },
+    "metrics-generated": {
+      "abstain_rate": 0.04,
+      "accuracy": 0.92,
+      "faithfulness": 0.9702380952380952,
+      "hallucination_rate": 0.041666666666666664,
+      "n": 50.0,
+      "numeric_match_rate": 0.9583333333333334,
+      "page_recall_10": 0.38
+    },
+    "novel-generated": {
+      "abstain_rate": 0.02,
+      "accuracy": 0.7,
+      "faithfulness": 0.9285714285714286,
+      "hallucination_rate": 0.2857142857142857,
+      "n": 50.0,
+      "numeric_match_rate": 0.6153846153846154,
+      "page_recall_10": 0.6
+    }
+  },
+  "cassettes": "cassettes/ebdb32d_20260917-0221",
+  "ci95": {
+    "abstain_rate": [
+      0.0,
+      0.04666666666666667
+    ],
+    "accuracy": [
+      0.7133333333333334,
+      0.84
+    ],
+    "citation_verified_rate": [
+      1.0,
+      1.0
+    ],
+    "faithfulness": [
+      0.9133121423172444,
+      0.9669463340891912
+    ],
+    "grounded_rate": [
+      0.4421768707482993,
+      0.6054421768707483
+    ],
+    "hallucination_rate": [
+      0.14285714285714285,
+      0.272108843537415
+    ],
+    "numeric_match_rate": [
+      0.7,
+      0.8857142857142857
+    ],
+    "overlap_recall_10": [
+      0.36,
+      0.5133333333333333
+    ],
+    "page_recall_10": [
+      0.4066666666666667,
+      0.5666666666666667
+    ]
+  },
+  "config_name": "agent_hybrid_gpt",
+  "cost_per_q_usd": 0.06383,
+  "cost_total_usd": 9.574497,
+  "embedder": "bge-small-en-v1.5",
+  "failures": {
+    "calculation_error": 1,
+    "none": 120,
+    "reasoning_error": 2,
+    "retrieval_miss": 19,
+    "unverified_citation": 8
+  },
+  "finished_at": "2026-09-17T23:14:25.837651Z",
+  "git_sha": "ebdb32d942303ac9579479d036617454c671e672",
+  "index_sha": "fb3d26842afbe197cd094e2c92d31b287e2931230a57939e2fe8ae53c466bc8f",
+  "judge_cost_usd": 1.115478,
+  "judge_model": "anthropic:claude-sonnet-5",
+  "judge_numeric_disagreements": [
+    "financebench_id_00382",
+    "financebench_id_00407",
+    "financebench_id_00669",
+    "financebench_id_01198",
+    "financebench_id_01279",
+    "financebench_id_05718"
+  ],
+  "judge_version": "v2",
+  "latency_p50_ms": 9311.07554150367,
+  "latency_p95_ms": 21755.693633695035,
+  "metrics": {
+    "abstain_rate": 0.02,
+    "accuracy": 0.78,
+    "citation_verified_rate": 1.0,
+    "error_rate": 0.0,
+    "faith_coverage": 0.98,
+    "faithfulness": 0.9414291113270705,
+    "gold_page_mrr": 0.30482258482258484,
+    "grounded_rate": 0.5238095238095238,
+    "hallucination_rate": 0.20408163265306123,
+    "judge_error_rate": 0.0,
+    "llm_ms_p50": 9204.52079349343,
+    "n_scored": 150.0,
+    "numeric_coverage": 0.4666666666666667,
+    "numeric_match_rate": 0.8,
+    "overlap_recall_10": 0.43333333333333335,
+    "page_recall_10": 0.4866666666666667,
+    "page_recall_20": 0.5,
+    "page_recall_5": 0.46,
+    "retrieval_ms_p50": 71.8517499990412,
+    "steps_mean": 5.08,
+    "tool_calls_mean": 5.0
+  },
+  "model": "gpt-5.5",
+  "models_yaml_as_of": "2026-09-11",
+  "n": 150,
+  "n_completed": 150,
+  "n_dataset": 150,
+  "prompt_hashes": {
+    "agent_system.md": "8f098e1b6f10e4be347da050fdc87de8130bd4a2c860daea4298b8a24f4b60d5",
+    "closed_book_system.md": "4664b0560eff2f51acf2c4c477bfa85910b71de905e4a8cb7280b826136ca14c",
+    "judge_correctness.md": "3c77552d84f809ad29dc206e2b14dd124324b355441969994774e71c35981fdb",
+    "judge_faithfulness.md": "064f7cb4f997526799405f9c8683f3a6f7b9543f00b72218efc1c232eaead9df",
+    "oracle_system.md": "4594c4a8e156e3c1116b0c87945753dcb849aca497f72da6e10bde214c4e7fbf",
+    "rag_system.md": "5a8c3db1a50b0b0863ba9637a16c9f7c167119ec9476518da2c5e6ef64182d00"
+  },
+  "provider": "openai",
+  "run_id": "ebdb32d_20260917-0221",
+  "started_at": "2026-09-17T04:08:04.030735Z"
+}

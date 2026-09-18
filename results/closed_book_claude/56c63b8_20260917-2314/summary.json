@@ -1,0 +1,117 @@
+{
+  "by_question_type": {
+    "domain-relevant": {
+      "abstain_rate": 0.12,
+      "accuracy": 0.62,
+      "faithfulness": null,
+      "hallucination_rate": 0.29545454545454547,
+      "n": 50.0,
+      "numeric_match_rate": 0.4166666666666667,
+      "page_recall_10": null
+    },
+    "metrics-generated": {
+      "abstain_rate": 0.04,
+      "accuracy": 0.92,
+      "faithfulness": null,
+      "hallucination_rate": 0.041666666666666664,
+      "n": 50.0,
+      "numeric_match_rate": 0.9583333333333334,
+      "page_recall_10": null
+    },
+    "novel-generated": {
+      "abstain_rate": 0.38,
+      "accuracy": 0.44,
+      "faithfulness": null,
+      "hallucination_rate": 0.2903225806451613,
+      "n": 50.0,
+      "numeric_match_rate": 0.5,
+      "page_recall_10": null
+    }
+  },
+  "cassettes": "cassettes/56c63b8_20260917-2314",
+  "ci95": {
+    "abstain_rate": [
+      0.12,
+      0.24666666666666667
+    ],
+    "accuracy": [
+      0.5866666666666667,
+      0.74
+    ],
+    "grounded_rate": [
+      0.056910569105691054,
+      0.16260162601626016
+    ],
+    "hallucination_rate": [
+      0.13008130081300814,
+      0.2764227642276423
+    ],
+    "numeric_match_rate": [
+      0.734375,
+      0.921875
+    ]
+  },
+  "config_name": "closed_book_claude",
+  "cost_per_q_usd": 0.01328,
+  "cost_total_usd": 1.992065,
+  "embedder": "local",
+  "failures": {
+    "none": 126,
+    "reasoning_error": 24
+  },
+  "finished_at": "2026-09-17T23:32:57.571949Z",
+  "git_sha": "56c63b806642830720159e7537546ce4631d75bc",
+  "index_sha": "fb3d26842afbe197cd094e2c92d31b287e2931230a57939e2fe8ae53c466bc8f",
+  "judge_cost_usd": 0.409162,
+  "judge_model": "anthropic:claude-sonnet-5",
+  "judge_numeric_disagreements": [
+    "financebench_id_00222",
+    "financebench_id_00566",
+    "financebench_id_00669",
+    "financebench_id_01198",
+    "financebench_id_01279",
+    "financebench_id_03856"
+  ],
+  "judge_version": "v2",
+  "latency_p50_ms": 4844.2610209967825,
+  "latency_p95_ms": 9224.439402602722,
+  "metrics": {
+    "abstain_rate": 0.18,
+    "accuracy": 0.66,
+    "citation_verified_rate": null,
+    "error_rate": 0.0,
+    "faith_coverage": 0.0,
+    "faithfulness": null,
+    "gold_page_mrr": null,
+    "grounded_rate": 0.10569105691056911,
+    "hallucination_rate": 0.1951219512195122,
+    "judge_error_rate": 0.0,
+    "llm_ms_p50": 4843.743457997334,
+    "n_scored": 150.0,
+    "numeric_coverage": 0.4266666666666667,
+    "numeric_match_rate": 0.828125,
+    "overlap_recall_10": null,
+    "page_recall_10": null,
+    "page_recall_20": null,
+    "page_recall_5": null,
+    "retrieval_ms_p50": 0.0,
+    "steps_mean": 1.0,
+    "tool_calls_mean": 0.0
+  },
+  "model": "claude-opus-5",
+  "models_yaml_as_of": "2026-09-11",
+  "n": 150,
+  "n_completed": 150,
+  "n_dataset": 150,
+  "prompt_hashes": {
+    "agent_system.md": "8f098e1b6f10e4be347da050fdc87de8130bd4a2c860daea4298b8a24f4b60d5",
+    "closed_book_system.md": "4664b0560eff2f51acf2c4c477bfa85910b71de905e4a8cb7280b826136ca14c",
+    "judge_correctness.md": "3c77552d84f809ad29dc206e2b14dd124324b355441969994774e71c35981fdb",
+    "judge_faithfulness.md": "064f7cb4f997526799405f9c8683f3a6f7b9543f00b72218efc1c232eaead9df",
+    "oracle_system.md": "4594c4a8e156e3c1116b0c87945753dcb849aca497f72da6e10bde214c4e7fbf",
+    "rag_system.md": "5a8c3db1a50b0b0863ba9637a16c9f7c167119ec9476518da2c5e6ef64182d00"
+  },
+  "provider": "anthropic",
+  "run_id": "56c63b8_20260917-2314",
+  "started_at": "2026-09-17T23:14:28.118198Z"
+}

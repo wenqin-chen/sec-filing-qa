@@ -1,0 +1,143 @@
+{
+  "by_question_type": {
+    "domain-relevant": {
+      "abstain_rate": 0.0,
+      "accuracy": 0.72,
+      "faithfulness": 0.8999947897907082,
+      "hallucination_rate": 0.28,
+      "n": 50.0,
+      "numeric_match_rate": 0.3076923076923077,
+      "page_recall_10": 0.5
+    },
+    "metrics-generated": {
+      "abstain_rate": 0.0,
+      "accuracy": 0.98,
+      "faithfulness": 0.99,
+      "hallucination_rate": 0.02,
+      "n": 50.0,
+      "numeric_match_rate": 0.98,
+      "page_recall_10": 0.26
+    },
+    "novel-generated": {
+      "abstain_rate": 0.02,
+      "accuracy": 0.66,
+      "faithfulness": 0.9564897486772487,
+      "hallucination_rate": 0.32653061224489793,
+      "n": 50.0,
+      "numeric_match_rate": 0.47058823529411764,
+      "page_recall_10": 0.66
+    }
+  },
+  "cassettes": "cassettes/ebdb32d_20260917-0021",
+  "ci95": {
+    "abstain_rate": [
+      0.0,
+      0.02
+    ],
+    "accuracy": [
+      0.72,
+      0.8533333333333334
+    ],
+    "citation_verified_rate": [
+      1.0,
+      1.0
+    ],
+    "faithfulness": [
+      0.9268553305160447,
+      0.9675938366244488
+    ],
+    "grounded_rate": [
+      0.1342281879194631,
+      0.2550335570469799
+    ],
+    "hallucination_rate": [
+      0.14093959731543623,
+      0.2751677852348993
+    ],
+    "numeric_match_rate": [
+      0.6625,
+      0.85
+    ],
+    "overlap_recall_10": [
+      0.3333333333333333,
+      0.49333333333333335
+    ],
+    "page_recall_10": [
+      0.3933333333333333,
+      0.56
+    ]
+  },
+  "config_name": "agent_hybrid_claude",
+  "cost_per_q_usd": 0.133354,
+  "cost_total_usd": 20.003095,
+  "embedder": "bge-small-en-v1.5",
+  "failures": {
+    "calculation_error": 2,
+    "none": 119,
+    "reasoning_error": 1,
+    "retrieval_miss": 20,
+    "unverified_citation": 8
+  },
+  "finished_at": "2026-09-17T23:07:01.288434Z",
+  "git_sha": "ebdb32d942303ac9579479d036617454c671e672",
+  "index_sha": "fb3d26842afbe197cd094e2c92d31b287e2931230a57939e2fe8ae53c466bc8f",
+  "judge_cost_usd": 1.316764,
+  "judge_model": "anthropic:claude-sonnet-5",
+  "judge_numeric_disagreements": [
+    "financebench_id_00382",
+    "financebench_id_00407",
+    "financebench_id_00566",
+    "financebench_id_00669",
+    "financebench_id_00684",
+    "financebench_id_00956",
+    "financebench_id_01198",
+    "financebench_id_01279",
+    "financebench_id_01865",
+    "financebench_id_01902",
+    "financebench_id_01912",
+    "financebench_id_01936",
+    "financebench_id_05718"
+  ],
+  "judge_version": "v2",
+  "latency_p50_ms": 14958.553791497252,
+  "latency_p95_ms": 36774.211177453246,
+  "metrics": {
+    "abstain_rate": 0.006666666666666667,
+    "accuracy": 0.7866666666666666,
+    "citation_verified_rate": 1.0,
+    "error_rate": 0.0,
+    "faith_coverage": 0.98,
+    "faithfulness": 0.9490561403826709,
+    "gold_page_mrr": 0.28023809523809523,
+    "grounded_rate": 0.19463087248322147,
+    "hallucination_rate": 0.2080536912751678,
+    "judge_error_rate": 0.013333333333333334,
+    "llm_ms_p50": 14847.28691700002,
+    "n_scored": 150.0,
+    "numeric_coverage": 0.5333333333333333,
+    "numeric_match_rate": 0.7625,
+    "overlap_recall_10": 0.41333333333333333,
+    "page_recall_10": 0.47333333333333333,
+    "page_recall_20": 0.47333333333333333,
+    "page_recall_5": 0.4266666666666667,
+    "retrieval_ms_p50": 70.26145799318328,
+    "steps_mean": 3.433333333333333,
+    "tool_calls_mean": 4.993333333333333
+  },
+  "model": "claude-opus-5",
+  "models_yaml_as_of": "2026-09-11",
+  "n": 150,
+  "n_completed": 150,
+  "n_dataset": 150,
+  "prompt_hashes": {
+    "agent_system.md": "8f098e1b6f10e4be347da050fdc87de8130bd4a2c860daea4298b8a24f4b60d5",
+    "closed_book_system.md": "4664b0560eff2f51acf2c4c477bfa85910b71de905e4a8cb7280b826136ca14c",
+    "judge_correctness.md": "3c77552d84f809ad29dc206e2b14dd124324b355441969994774e71c35981fdb",
+    "judge_faithfulness.md": "064f7cb4f997526799405f9c8683f3a6f7b9543f00b72218efc1c232eaead9df",
+    "oracle_system.md": "4594c4a8e156e3c1116b0c87945753dcb849aca497f72da6e10bde214c4e7fbf",
+    "rag_system.md": "5a8c3db1a50b0b0863ba9637a16c9f7c167119ec9476518da2c5e6ef64182d00"
+  },
+  "provider": "anthropic",
+  "run_id": "ebdb32d_20260917-0021",
+  "started_at": "2026-09-17T02:21:17.668967Z"
+}

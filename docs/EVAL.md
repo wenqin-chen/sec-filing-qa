@@ -223,26 +223,65 @@ introduced that the evidence does not contain. Agent rows can ground derived num
 calculator tool calls; RAG rows cannot, by construction. Abstentions count as grounded (nothing
 was asserted).
 
-## Findings so far (retrieval-only rows, 2026-09-12)
+## Findings (full v0.1 matrix, 2026-09-17)
 
-Six key-free rows are complete (FinanceBench open set, 150 questions, bge-small-en-v1.5 index,
-k = 20; numbers in `RESULTS.md`). Three things are already visible before any answering model runs:
+All 16 configured rows are complete: 6 key-free retrieval rows and 10 answering rows, 150 FinanceBench
+questions each, one fixed judge (`anthropic:claude-sonnet-5`, judge prompt v2). Numbers below are
+copied from `RESULTS.md`; per-question records are in `results/<config>/<run_id>/predictions.jsonl`.
 
-1. **Knowing the filing matters more than the retriever.** Restricting retrieval to the question's
-   own document(s) (`doc_filter: true`, the realistic setting: the user names the company and
-   year) lifts page recall@20 from 24.7% to 65.3% for BM25, from 54.0% to 79.3% for dense, and
-   from 50.0% to 74.7% for hybrid. Corpus-wide retrieval over 84 filings is the hard, and less
-   realistic, setting; both are reported.
-2. **Hybrid fusion currently trails dense retrieval** on page recall (74.7% vs 79.3% document-
-   filtered; 50.0% vs 54.0% corpus-wide) while edging it on gold-page MRR (0.425 vs 0.421). The
-   reciprocal-rank fusion gives the weak BM25 ranking equal weight; a weighted fusion or a
-   BM25 score floor is the obvious next ablation. This is reported as measured, not tuned away.
-3. **BM25 over filings is weak** (page recall@20 24.7% corpus-wide, 65.3% document-filtered).
-   FinanceBench questions paraphrase line items ("capital expenditure" for "purchases of
-   property, plant and equipment") and lean on numbers, which lexical matching over chunked
-   10-K pages handles poorly; dense retrieval closes most of that gap.
+### 1. The benchmark is partly memorised, so accuracy alone cannot show grounding
 
-Page-level recall is only publishable because the page-indexing gate passes (`docs/DATA.md`:
-25/25 on the seed-0 sample, 46/50 on a seed-1 sample, best-page agreement 33/33 and 60/60).
-The remaining headroom for answering models is bounded by these recall numbers: with
-document-filtered dense retrieval, roughly one question in five has no gold page in the top 20.
+Closed-book, with no document at all, Claude Opus 5 answers 66.0% of questions correctly (92% of the
+metrics-generated ones) and GPT-5.5 46.0%. FinanceBench and its filings have been public since 2023.
+That is why the matrix carries a closed-book bracket: on this benchmark a high accuracy number can come
+from recall, and the property RAG and the agent add is *verifiability*, not points. 97–100% of the
+citations produced by the RAG and agent rows are verbatim quotes from a filing page; a closed-book
+answer has nothing behind it.
+
+### 2. Retrieved evidence can make a model worse than its own memory
+
+Corpus-wide hybrid RAG over all 84 filings scores 42.7% (Claude) and 27.3% (GPT), *below* closed-book
+for both. Given chunks that do not contain the figure, the models abstain (44.7% and 62.0%) instead
+of recalling it. Restricting retrieval to the question's own filing (the realistic setting, where the
+user names the company and year) lifts RAG to 58.0% and 46.0%. Retrieval is the ceiling: page
+recall@10 is 62% document-filtered and 38% corpus-wide, identical for both vendors.
+
+### 3. Tools over structured data are the largest lever
+
+The agent (search, page fetch, XBRL fact lookup, read-only SQL, calculator) reaches 78.7% (Claude)
+and 78.0% (GPT) on the same corpus, without a document filter, with 100% of citations verified and
+abstention near zero. Metrics-generated questions go to 98% (Claude) and 92% (GPT) because
+`lookup_fact` finds the line item the chunked text missed. Costs are stated with it: 3x the money and
+3x the latency of RAG for Claude (median 15.0 s, $0.13 per question), and the hallucination rate
+among answered questions does not improve (20.8% vs 19.4%), so the gain is answering more questions
+correctly, not being more careful on each one.
+
+### 4. With tools, the vendors converge; on plain RAG they do not
+
+On document-filtered RAG the gap is 12 points (58.0% vs 46.0%): Claude attempts more and gets more
+right, GPT abstains more and hallucinates less when it answers (12.7% vs 19.4%). With tools the two
+are within a point (78.7% vs 78.0%), and GPT does it at half the cost and two-thirds the latency,
+even though its tool-calling turns run without reasoning (see LIMITATIONS.md: `/v1/chat/completions`
+rejects `reasoning_effort` with function tools). GPT used more tool calls per question (5.1 vs 3.4
+steps) and hit the step cap on 12 questions.
+
+### 5. The oracle bracket bounds what better retrieval could buy
+
+Handed the gold pages, Claude reaches 84.0% and GPT 77.3%. So for Claude, retrieval failures cost
+about 26 points (58.0% document-filtered RAG vs 84.0% oracle), and the agent recovers most of that
+gap (78.7%) by other means. The residual 16% oracle error rate is the reasoning-and-arithmetic floor
+of a single-call design on this benchmark; the failure taxonomy in `RESULTS.md` splits it.
+
+### 6. Retrieval-only rows (key-free, reproducible by anyone)
+
+Document-filtered page recall@20: BM25 65.3%, dense (bge-small-en-v1.5) 79.3%, hybrid 74.7%;
+corpus-wide: 24.7% / 54.0% / 50.0%. Hybrid reciprocal-rank fusion trails dense retrieval because it
+weights the weak BM25 ranking equally; a weighted fusion is the obvious next ablation and is reported
+as measured, not tuned away. FinanceBench questions paraphrase line items and lean on numbers,
+which lexical matching over chunked 10-K pages handles poorly.
+
+### What is not claimed
+
+No human-agreement number yet (`human_labels.csv` is empty; the 30-question label set is a manual
+task), no judge-swap kappa yet, and no deployed endpoint. The matrix used one embedder and one
+judge; the OpenAI ablation with `text-embedding-3-small` and the cheaper-model rows are not run.

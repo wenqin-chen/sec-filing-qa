@@ -139,3 +139,9 @@ limits of what *is* built.
   sends `reasoning_effort="none"` on those turns. Anthropic agent rows keep adaptive thinking, so the
   two vendors' `agent_*` rows are not effort-matched; migrating the OpenAI adapter to `/v1/responses`
   is the recorded follow-up (docs/decisions.md ADR-009).
+
+- **FinanceBench is partly memorised by current models.** Closed-book Claude Opus 5 scores 66.0% and
+  GPT-5.5 46.0% with no document in context (92% and 44% on metrics-generated questions). Accuracy on
+  this benchmark therefore cannot by itself demonstrate grounding; read it together with the citation
+  verification rate and the closed-book bracket (docs/EVAL.md, finding 1). A held-out, post-2024
+  filing set is the right follow-up.
