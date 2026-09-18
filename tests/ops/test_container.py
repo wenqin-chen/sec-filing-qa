@@ -67,7 +67,7 @@ class TestDockerfile:
         stages = _stages(dockerfile)
         assert {"deps", "build-slim", "build-full", "runtime", "slim", "full"} <= set(stages)
         assert stages["deps"] == "${UV_IMAGE}"
-        assert "ghcr.io/astral-sh/uv:0.11-python3.11-bookworm-slim" in dockerfile
+        assert "ghcr.io/astral-sh/uv:python3.11-bookworm-slim" in dockerfile
         assert stages["runtime"] == "${PYTHON_IMAGE}"
         assert "python:3.11-slim" in dockerfile
         assert stages["slim"] == "runtime" and stages["full"] == "runtime"
