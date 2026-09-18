@@ -50,7 +50,13 @@ jobs:
         run: uv run --no-sync mypy || true
 
       - name: Offline tests with coverage
-        run: uv run --no-sync pytest -q --cov=secqa --cov-report=xml --cov-report=term
+        run: |
+          set -o pipefail
+          uv run --no-sync pytest -q -rfE --cov=secqa --cov-report=xml --cov-report=term 2>&1 | tee pytest.log || {
+            # Surface the failing test ids as check annotations (readable without a login).
+            grep -E '^(FAILED|ERROR) ' pytest.log | head -10 | sed 's/^/::error title=pytest::/'
+            exit 1
+          }
 
       - name: Mock smoke evaluation
         run: uv run --no-sync secqa eval --config configs/rag_mock.yaml --limit 6
