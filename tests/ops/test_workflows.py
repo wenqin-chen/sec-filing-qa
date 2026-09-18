@@ -52,7 +52,7 @@ class TestCI:
         run = _run_text(wf, "test")
         assert "uv sync --extra dev --extra openai --extra anthropic" in run
         assert "ruff check ." in run and "ruff format --check ." in run
-        assert "pytest -q --cov=secqa" in run
+        assert "pytest -q -rfE --cov=secqa" in run  # -rfE: failing ids are annotated in CI
         assert "secqa eval --config configs/rag_mock.yaml --limit 6" in run
         assert "--extra local" not in run, "CI must not download model weights"
 

@@ -94,6 +94,9 @@ _HARDENED_SETTINGS: tuple[tuple[str, bool], ...] = (
 # Resource limits pinned on read-only (serving) stores unless the caller passes its own; a
 # writable (ingest) store keeps DuckDB's defaults. See :meth:`DuckDBStore._harden_configuration`.
 SERVING_MEMORY_LIMIT = "512MB"
+#: Scores are rounded to this many decimals before ranking so that floating-point noise from
+#: parallel aggregation (BM25) cannot reorder chunks that are tied; the chunk_id then decides.
+SCORE_DECIMALS = 6
 SERVING_THREADS = 2
 # DuckDB's grammar for ``memory_limit``: a number and a unit (``512MB``, ``1.5GiB``, ``bytes``).
 _MEMORY_LIMIT_RE = re.compile(r"^(\d+(?:\.\d+)?)\s*([KMGT]i?B|bytes?)$", re.IGNORECASE)
@@ -324,7 +327,7 @@ class _PythonBM25:
                     score += self._idf[tok] * tf * (self.k1 + 1.0) / (tf + norm)
             if score > 0.0:
                 scored.append((self.ids[i], score))
-        scored.sort(key=lambda pair: (-pair[1], pair[0]))
+        scored.sort(key=lambda pair: (-round(pair[1], SCORE_DECIMALS), pair[0]))
         return scored[:k]
 
 
@@ -755,7 +758,10 @@ class DuckDBStore:
                 f"    SELECT chunk_id, {_FTS_SCHEMA}.match_bm25(chunk_id, ?) AS score FROM chunks"
                 ") s USING (chunk_id) "
                 f"WHERE s.score IS NOT NULL{where} "
-                "ORDER BY s.score DESC, c.chunk_id LIMIT ?",
+                # round() before the chunk_id tie-break: DuckDB's parallel aggregation gives
+                # equal BM25 scores last-bit differences that vary between queries (seen in CI on
+                # Linux), which flipped the order of tied chunks between k=2 and k=4.
+                f"ORDER BY round(s.score, {SCORE_DECIMALS}) DESC, c.chunk_id LIMIT ?",
                 [query, *params, k],
             ).fetchall()
             hits = [
@@ -806,7 +812,7 @@ class DuckDBStore:
         rows = self.conn.execute(
             f"SELECT {_CHUNK_COLUMNS}, array_cosine_similarity(embedding, ?::FLOAT[{self.dim}]) "
             f"AS score FROM chunks WHERE score IS NOT NULL{where} "
-            "ORDER BY score DESC, chunk_id LIMIT ?",
+            f"ORDER BY round(score, {SCORE_DECIMALS}) DESC, chunk_id LIMIT ?",
             [vector.tolist(), *params, k],
         ).fetchall()
         hits = [

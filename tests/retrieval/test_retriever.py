@@ -327,3 +327,18 @@ def test_to_hit_view_truncates_snippet_and_copies_fields() -> None:
     assert to_hit_view(_hit("A_2023_10K", 3, 1), max_chars=4).snippet == "some"
     with pytest.raises(ValueError, match="max_chars"):
         to_hit_view(_hit("A_2023_10K", 3, 1), max_chars=0)
+
+
+def test_tied_bm25_scores_break_ties_by_chunk_id(
+    populated_store: DuckDBStore, embedder: HashingEmbedder
+) -> None:
+    """Three fixture chunks tie on BM25 for QUESTION; the order must be chunk_id ascending and
+    identical for every k (CI on Linux flipped it before scores were rounded for ranking)."""
+    retriever = Retriever(populated_store, embedder, strategy="bm25", k=4)
+    hits = retriever.retrieve(QUESTION).hits
+    top = [h for h in hits if abs(h.score - hits[0].score) < 1e-6]
+    assert len(top) >= 2
+    assert [h.chunk.chunk_id for h in top] == sorted(h.chunk.chunk_id for h in top)
+    for k in (1, 2, 3):
+        again = Retriever(populated_store, embedder, strategy="bm25", k=k).retrieve(QUESTION)
+        assert [h.chunk.chunk_id for h in again.hits] == [h.chunk.chunk_id for h in hits[:k]]
